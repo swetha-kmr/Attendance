@@ -1,568 +1,359 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { toast } from 'sonner'
-import { secondaryAuth } from '@/lib/firebase'
-import {
-  Search, Plus, Edit2, UserX, ChevronDown,
-  Mail, Phone, X, AlertCircle, Loader2,
-  Users, UserCheck, UserMinus, Eye, EyeOff,
-  Settings, BarChart3, Clock, FileText, LogOut, Menu
-} from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
+import { ProtectedRoute } from '@/lib/protected-route'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { secondaryAuth } from '@/lib/firebase'
 import { createUser, getAllUsers, updateUser, deactivateUser } from '@/lib/firestore-service'
 import { Timestamp } from 'firebase/firestore'
-import { ProtectedRoute } from '@/lib/protected-route'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/lib/auth-context'
+import { toast } from 'sonner'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── MUI Icons ──────────────────────────────────────────────────────────────────
+import DashboardRoundedIcon        from '@mui/icons-material/DashboardRounded'
+import PeopleRoundedIcon           from '@mui/icons-material/PeopleRounded'
+import AccessTimeRoundedIcon       from '@mui/icons-material/AccessTimeRounded'
+import EventNoteRoundedIcon        from '@mui/icons-material/EventNoteRounded'
+import SettingsRoundedIcon         from '@mui/icons-material/SettingsRounded'
+import LogoutRoundedIcon           from '@mui/icons-material/LogoutRounded'
+import MenuRoundedIcon             from '@mui/icons-material/MenuRounded'
+import CloseRoundedIcon            from '@mui/icons-material/CloseRounded'
+import FingerprintRoundedIcon      from '@mui/icons-material/FingerprintRounded'
+import AddRoundedIcon              from '@mui/icons-material/AddRounded'
+import SearchRoundedIcon           from '@mui/icons-material/SearchRounded'
+import EditRoundedIcon             from '@mui/icons-material/EditRounded'
+import PersonOffRoundedIcon        from '@mui/icons-material/PersonOffRounded'
+import MailRoundedIcon             from '@mui/icons-material/MailRounded'
+import PhoneRoundedIcon            from '@mui/icons-material/PhoneRounded'
+import VisibilityRoundedIcon       from '@mui/icons-material/VisibilityRounded'
+import VisibilityOffRoundedIcon    from '@mui/icons-material/VisibilityOffRounded'
+import ErrorRoundedIcon            from '@mui/icons-material/ErrorRounded'
+import CheckCircleRoundedIcon      from '@mui/icons-material/CheckCircleRounded'
+import PeopleAltRoundedIcon        from '@mui/icons-material/PeopleAltRounded'
+import HowToRegRoundedIcon         from '@mui/icons-material/HowToRegRounded'
+import PersonOffOutlinedIcon       from '@mui/icons-material/PersonOffOutlined'
+import WarningAmberRoundedIcon     from '@mui/icons-material/WarningAmberRounded'
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface UserProfile {
-  uid: string
-  email: string
-  name: string
-  role: 'admin' | 'employee'
-  phoneNumber?: string
-  department?: string
-  designation?: string
-  createdAt: Timestamp
-  lastLogin: Timestamp
-  status: 'active' | 'inactive'
+  uid: string; email: string; name: string; role: 'admin' | 'employee'
+  phoneNumber?: string; department?: string; designation?: string
+  createdAt: Timestamp; lastLogin: Timestamp; status: 'active' | 'inactive'
 }
-
-interface NewEmployeeForm {
-  name: string
-  email: string
-  password: string
-  phoneNumber: string
-  department: string
-  designation: string
-}
-
-const EMPTY_FORM: NewEmployeeForm = {
-  name: '',
-  email: '',
-  password: '',
-  phoneNumber: '',
-  department: '',
-  designation: '',
-}
-
+interface NewEmployeeForm { name: string; email: string; password: string; phoneNumber: string; department: string; designation: string }
+const EMPTY_FORM: NewEmployeeForm = { name: '', email: '', password: '', phoneNumber: '', department: '', designation: '' }
 const DEPARTMENTS = ['Engineering', 'HR', 'Finance', 'Marketing', 'Operations', 'Design']
 
-// ─── Main Content ─────────────────────────────────────────────────────────────
+// ── Sad Person Illustration ───────────────────────────────────────────────────
+function SadPersonIllustration() {
+  return (
+    <svg viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg" className="w-40 h-36 mx-auto">
+      <rect x="20" y="120" width="160" height="10" rx="5" fill="#e53e3e" /><rect x="20" y="108" width="160" height="10" rx="5" fill="#fc8181" />
+      <rect x="28" y="130" width="8" height="30" rx="3" fill="#c53030" /><rect x="164" y="130" width="8" height="30" rx="3" fill="#c53030" />
+      <rect x="70" y="130" width="8" height="30" rx="3" fill="#c53030" /><rect x="122" y="130" width="8" height="30" rx="3" fill="#c53030" />
+      <rect x="82" y="80" width="36" height="40" rx="8" fill="#bee3f8" /><polygon points="100,85 97,100 100,110 103,100" fill="#2d3748" />
+      <rect x="83" y="116" width="14" height="22" rx="4" fill="#2d3748" /><rect x="103" y="116" width="14" height="22" rx="4" fill="#2d3748" />
+      <ellipse cx="90" cy="140" rx="9" ry="5" fill="#1a202c" /><ellipse cx="110" cy="140" rx="9" ry="5" fill="#1a202c" />
+      <path d="M82 90 Q68 100 66 115" stroke="#bee3f8" strokeWidth="10" strokeLinecap="round" fill="none"/>
+      <path d="M118 90 Q132 100 134 115" stroke="#bee3f8" strokeWidth="10" strokeLinecap="round" fill="none"/>
+      <circle cx="100" cy="65" r="22" fill="#fbd38d" />
+      <path d="M78 60 Q80 42 100 42 Q120 42 122 60" fill="#2d3748" />
+      <path d="M90 62 Q93 58 96 62" stroke="#2d3748" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      <path d="M104 62 Q107 58 110 62" stroke="#2d3748" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      <path d="M91 72 Q100 68 109 72" stroke="#c53030" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      <ellipse cx="90" cy="69" rx="2" ry="3" fill="#90cdf4" opacity="0.8"/>
+    </svg>
+  )
+}
 
+function ConfirmModal({ show, onClose, onConfirm, illustration, title, subtitle, confirmLabel, confirmClass, loading = false }: {
+  show: boolean; onClose: () => void; onConfirm: () => void; illustration: React.ReactNode
+  title: string; subtitle: string; confirmLabel: string; confirmClass: string; loading?: boolean
+}) {
+  if (!show) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+        {illustration}
+        <h2 className="text-xl font-bold text-slate-900 mt-2 mb-1">{title}</h2>
+        <p className="text-sm text-slate-500 mb-6">{subtitle}</p>
+        <div className="flex gap-3">
+          <button onClick={onClose} disabled={loading} className="flex-1 h-11 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
+          <button onClick={onConfirm} disabled={loading} className={`flex-1 h-11 rounded-xl text-white font-semibold transition-colors ${confirmClass}`}>
+            {loading ? 'Please wait…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+function StatCard({ icon, label, value, gradient, iconBg }: { icon: React.ReactNode; label: string; value: string | number; gradient: string; iconBg: string }) {
+  return (
+    <div className={`rounded-2xl p-5 ${gradient} relative overflow-hidden group`}>
+      <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/10 group-hover:scale-125 transition-transform duration-500" />
+      <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center mb-4`}>{icon}</div>
+      <p className="text-xs font-semibold uppercase tracking-wider opacity-70 mb-1">{label}</p>
+      <p className="text-2xl font-black">{value}</p>
+    </div>
+  )
+}
+
+// ── Main Content ──────────────────────────────────────────────────────────────
 function EmployeeManagementContent() {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [employees, setEmployees] = useState<UserProfile[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterDept, setFilterDept] = useState('all')
+  const [sidebarOpen, setSidebarOpen]   = useState(true)
+  const [employees, setEmployees]       = useState<UserProfile[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [searchTerm, setSearchTerm]     = useState('')
+  const [filterDept, setFilterDept]     = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
 
-  // Add Employee modal state
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [formData, setFormData] = useState<NewEmployeeForm>(EMPTY_FORM)
-  const [showPassword, setShowPassword] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [formError, setFormError] = useState('')
+  const [showAddModal, setShowAddModal]   = useState(false)
+  const [formData, setFormData]           = useState<NewEmployeeForm>(EMPTY_FORM)
+  const [showPassword, setShowPassword]   = useState(false)
+  const [submitting, setSubmitting]       = useState(false)
+  const [formError, setFormError]         = useState('')
 
-  // Edit modal state
-  const [editEmployee, setEditEmployee] = useState<UserProfile | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', phoneNumber: '', department: '', designation: '' })
+  const [editEmployee, setEditEmployee]   = useState<UserProfile | null>(null)
+  const [editForm, setEditForm]           = useState({ name: '', phoneNumber: '', department: '', designation: '' })
   const [editSubmitting, setEditSubmitting] = useState(false)
-  const [editError, setEditError] = useState('')
+  const [editError, setEditError]         = useState('')
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [logoutLoading, setLogoutLoading]         = useState(false)
+  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false)
+  const [selectedEmployee, setSelectedEmployee]           = useState<{ uid: string; name: string } | null>(null)
+  const [deactivateLoading, setDeactivateLoading]         = useState(false)
 
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
 
-  // ── Load employees ──────────────────────────────────────────────────────────
-
   const loadEmployees = async () => {
+    try { setLoading(true); const all = await getAllUsers(); setEmployees(all.filter(u => u.role === 'employee')) }
+    catch (err) { console.error(err) } finally { setLoading(false) }
+  }
+  useEffect(() => { loadEmployees() }, [])
+
+  const handleLogoutConfirmed = async () => {
+    setLogoutLoading(true)
+    try { await signOut(); router.push('/') }
+    catch (err) { console.error(err); setLogoutLoading(false); setShowLogoutConfirm(false) }
+  }
+
+  const handleAddEmployee = async (e: React.FormEvent) => {
+    e.preventDefault(); setFormError(''); setSubmitting(true)
     try {
-      setLoading(true)
-      const all = await getAllUsers()
-      // Show only employees (not admins)
-      setEmployees(all.filter(u => u.role === 'employee'))
-    } catch (err) {
-      console.error('Error loading employees:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadEmployees()
-  }, [])
-
-  // ── Logout ──────────────────────────────────────────────────────────────────
-
-  const handleLogout = async () => {
-    try {
-      await signOut()
-      router.push('/')
-    } catch (err) {
-      console.error('Logout error:', err)
-    }
-  }
-
-  // ── Add Employee ────────────────────────────────────────────────────────────
-
-
-
-  const validateEmployeeForm = () => {
-  const errors: string[] = []
-
-  if (!formData.name.trim()) {
-    errors.push('Name is required')
-  }
-
-  if (!formData.email.trim()) {
-    errors.push('Email is required')
-  }
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-    errors.push('Invalid email format')
-  }
-
-  if (!formData.password) {
-    errors.push('Password is required')
-  }
-
-  if (formData.password && formData.password.length < 6) {
-    errors.push('Password must be at least 6 characters')
-  }
-
-  if (!formData.department) {
-    errors.push('Department is required')
-  }
-
-  if (!formData.designation) {
-    errors.push('Designation is required')
-  }
-
-  return errors
-}
- const handleAddEmployee = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setFormError('')
-  setSubmitting(true)
-
-  try {
-    // 1. Validate first
-    const validationErrors = validateEmployeeForm()
-
-    if (validationErrors.length > 0) {
-      setFormError(validationErrors[0])
-      return
-    }
-
-    if (formData.password.length < 6) {
-      setFormError('Password must be at least 6 characters')
-      return
-    }
-
-    // 2. Create Firebase Auth user
-    const userCredential = await createUserWithEmailAndPassword(
-      secondaryAuth,
-      formData.email,
-      formData.password
-    )
-
-    // 3. Create Firestore profile
-    const newProfile: UserProfile = {
-      uid: userCredential.user.uid,
-      email: formData.email,
-      name: formData.name,
-      role: 'employee',
-      phoneNumber: formData.phoneNumber,
-      department: formData.department,
-      designation: formData.designation,
-      createdAt: Timestamp.now(),
-      lastLogin: Timestamp.now(),
-      status: 'active',
-    }
-
-    await createUser(newProfile)
-
-    // 4. Success actions
-    toast.success(`${formData.name} added successfully!`) // better than setFormSuccess
-    setFormData(EMPTY_FORM)
-    setShowAddModal(false)
-    await loadEmployees()
-
-  } catch (err: any) {
-    if (err.code === 'auth/email-already-in-use') {
-      setFormError('This email is already registered')
-    } else if (err.code === 'auth/invalid-email') {
-      setFormError('Invalid email address')
-    } else if (err.code === 'auth/weak-password') {
-      setFormError('Password is too weak')
-    } else {
-      setFormError(err.message || 'Failed to create employee')
-    }
-  } finally {
-    setSubmitting(false)
-  }
-}
-
-  // ── Edit Employee ───────────────────────────────────────────────────────────
-
-  const openEdit = (emp: UserProfile) => {
-    setEditEmployee(emp)
-    setEditForm({
-      name: emp.name,
-      phoneNumber: emp.phoneNumber || '',
-      department: emp.department || '',
-      designation: emp.designation || '',
-    })
-    setEditError('')
-  }
-
-  const handleEditSave = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editEmployee) return
-    setEditSubmitting(true)
-    setEditError('')
-    try {
-      await updateUser(editEmployee.uid, {
-        name: editForm.name,
-        phoneNumber: editForm.phoneNumber,
-        department: editForm.department,
-        designation: editForm.designation,
-      })
-      setEditEmployee(null)
-      await loadEmployees()
+      if (!formData.name || !formData.email || !formData.password) throw new Error('Name, email, and password are required')
+      if (formData.password.length < 6) throw new Error('Password must be at least 6 characters')
+      const uc = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.password)
+      await createUser({ uid: uc.user.uid, email: formData.email, name: formData.name, role: 'employee', phoneNumber: formData.phoneNumber, department: formData.department, designation: formData.designation, createdAt: Timestamp.now(), lastLogin: Timestamp.now(), status: 'active' } as UserProfile)
+      toast.success(`${formData.name} added successfully!`)
+      setFormData(EMPTY_FORM); setShowAddModal(false); await loadEmployees()
     } catch (err: any) {
-      setEditError(err.message || 'Failed to update employee')
-    } finally {
-      setEditSubmitting(false)
-    }
+      if (err.code === 'auth/email-already-in-use') setFormError('This email is already registered')
+      else if (err.code === 'auth/invalid-email') setFormError('Invalid email address')
+      else setFormError(err.message || 'Failed to create employee')
+    } finally { setSubmitting(false) }
   }
 
-  // ── Deactivate Employee ─────────────────────────────────────────────────────
-
-
-  const [confirmOpen, setConfirmOpen] = useState(false)
-const [selectedEmployee, setSelectedEmployee] = useState<{
-  uid: string
-  name: string
-} | null>(null)
-
-const handleDeactivate = async (uid: string, name: string) => {
-  toast(
-    `Deactivate ${name}?`,
-    {
-      description: "The employee will lose access to the system.",
-      action: {
-        label: "Deactivate",
-        onClick: async () => {
-          try {
-            await deactivateUser(uid)
-            await loadEmployees()
-
-            toast.success(
-              `${name} has been deactivated successfully`
-            )
-          } catch (error) {
-            toast.error(
-              "Failed to deactivate employee"
-            )
-          }
-        },
-      },
-      cancel: {
-        label: "Cancel",
-        onClick: () => {},
-      },
-    }
-  )
-}
-const confirmDeactivate = async () => {
-  if (!selectedEmployee) return
-
-  try {
-    await deactivateUser(selectedEmployee.uid)
-    await loadEmployees()
-
-    toast.success(
-      `${selectedEmployee.name} has been deactivated successfully`
-    )
-
-    setConfirmOpen(false)
-    setSelectedEmployee(null)
-  } catch {
-    toast.error('Failed to deactivate employee')
+  const openEdit = (emp: UserProfile) => { setEditEmployee(emp); setEditForm({ name: emp.name, phoneNumber: emp.phoneNumber || '', department: emp.department || '', designation: emp.designation || '' }); setEditError('') }
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!editEmployee) return; setEditSubmitting(true); setEditError('')
+    try { await updateUser(editEmployee.uid, editForm); setEditEmployee(null); await loadEmployees() }
+    catch (err: any) { setEditError(err.message || 'Failed to update') } finally { setEditSubmitting(false) }
   }
-}
-  // const handleDeactivate = async (uid: string, name: string) => {
-  //   if (!confirm(`Deactivate ${name}? They will lose access to the system.`)) return
-  //   try {
-  //     await deactivateUser(uid)
-  //     await loadEmployees()
-  //   } catch (err) {
-  //     console.error('Error deactivating employee:', err)
-  //   }
-  // }
 
-  // ── Filter ──────────────────────────────────────────────────────────────────
+  const confirmDeactivate = async () => {
+    if (!selectedEmployee) return; setDeactivateLoading(true)
+    try { await deactivateUser(selectedEmployee.uid); await loadEmployees(); toast.success(`${selectedEmployee.name} deactivated`); setConfirmDeactivateOpen(false); setSelectedEmployee(null) }
+    catch { toast.error('Failed to deactivate') } finally { setDeactivateLoading(false) }
+  }
 
-  const filtered = employees.filter(emp => {
-    const matchSearch =
-      emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchDept = filterDept === 'all' || emp.department === filterDept
-    const matchStatus = filterStatus === 'all' || emp.status === filterStatus
-    return matchSearch && matchDept && matchStatus
+  const filtered = employees.filter(e => {
+    const ms = e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.email.toLowerCase().includes(searchTerm.toLowerCase())
+    return ms && (filterDept === 'all' || e.department === filterDept) && (filterStatus === 'all' || e.status === filterStatus)
   })
 
-  const activeCount = employees.filter(e => e.status === 'active').length
-  const inactiveCount = employees.filter(e => e.status === 'inactive').length
-
-  // ── Sidebar menu ────────────────────────────────────────────────────────────
-
-  const menuItems = [
-    { label: 'Dashboard', icon: BarChart3, href: '/admin/dashboard' },
-    { label: 'Employees', icon: Users, href: '/admin/employees', active: true },
-    { label: 'Attendance', icon: Clock, href: '/admin/attendance' },
-    { label: 'Leave Requests', icon: FileText, href: '/admin/leaves' },
-      { label: 'Settings', icon: Settings, href: '/admin/settings' },
+  const navItems = [
+    { href: '/admin/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',      active: false },
+    { href: '/admin/employees', icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',      active: true  },
+    { href: '/admin/attendance',icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',     active: false },
+    { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: false },
+    { href: '/admin/settings',  icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',       active: false },
   ]
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+
+      {/* Modals */}
+      <ConfirmModal show={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={handleLogoutConfirmed} illustration={<SadPersonIllustration />} title="Comeback Soon!" subtitle="Are you sure you want to logout?" confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700" loading={logoutLoading} />
+      <ConfirmModal show={confirmDeactivateOpen} onClose={() => { setConfirmDeactivateOpen(false); setSelectedEmployee(null) }} onConfirm={confirmDeactivate} illustration={<div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center"><PersonOffRoundedIcon sx={{ fontSize: 36, color: '#dc2626' }} /></div>} title="Deactivate Employee?" subtitle={`${selectedEmployee?.name} will lose system access.`} confirmLabel="Yes, Deactivate" confirmClass="bg-red-600 hover:bg-red-700" loading={deactivateLoading} />
 
       {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex flex-col h-full">
-          <div className="px-6 py-6 border-b border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center font-bold">A</div>
-              <div>
-                <h1 className="font-bold text-slate-900">Attendance</h1>
-                <p className="text-xs text-slate-500">Admin Panel</p>
-              </div>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-5 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-md shadow-blue-200">
+              <FingerprintRoundedIcon sx={{ fontSize: 20, color: '#fff' }} />
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-900 text-sm leading-tight">SeyonSync</p>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Admin Panel</p>
             </div>
           </div>
-          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-            {menuItems.map(item => (
-              <Link key={item.label} href={item.href}>
-                <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors text-left ${item.active ? 'bg-blue-50 text-blue-700' : ''}`}>
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </button>
-              </Link>
-            ))}
-          </nav>
-          <div className="px-4 py-6 border-t border-slate-200 space-y-4">
-            <div className="px-4 py-3 bg-slate-50 rounded-lg">
-              <p className="text-xs text-slate-600">Logged in as</p>
-              <p className="font-medium text-slate-900 text-sm">{userProfile?.name}</p>
-              <p className="text-xs text-slate-500">{userProfile?.email}</p>
+        </div>
+        <nav className="flex-1 px-3 py-5 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
+          {navItems.map(item => (
+            <Link key={item.href} href={item.href}>
+              <button className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 text-left ${item.active ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+                <span className={item.active ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
+                {item.label}
+                {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
+              </button>
+            </Link>
+          ))}
+        </nav>
+        <div className="px-3 py-4 border-t border-slate-100 space-y-3">
+          <div className="px-3 py-3 bg-slate-50 rounded-xl flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+              {userProfile?.name?.charAt(0) ?? 'A'}
             </div>
-            <Button onClick={handleLogout} className="w-full bg-red-600 hover:bg-red-700 text-white">
-              <LogOut className="w-4 h-4 mr-2" />Sign Out
-            </Button>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 truncate">{userProfile?.name ?? 'Admin'}</p>
+              <p className="text-[11px] text-slate-400 truncate">{userProfile?.email}</p>
+            </div>
           </div>
+          <button onClick={() => setShowLogoutConfirm(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm">
+            <LogoutRoundedIcon sx={{ fontSize: 18 }} />Sign Out
+          </button>
         </div>
       </aside>
 
+      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-2 hover:bg-slate-100 rounded-lg">
-              <Menu className="w-6 h-6" />
-            </button>
-            <h1 className="text-2xl font-bold text-slate-900">Employee Management</h1>
+        <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-4 sticky top-0 z-20">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+            {sidebarOpen ? <CloseRoundedIcon /> : <MenuRoundedIcon />}
+          </button>
+          <div className="flex-1">
+            <h1 className="text-xl font-extrabold text-slate-900 leading-tight">Employee Management</h1>
+            <p className="text-xs text-slate-400">Manage your team members</p>
           </div>
-          <Button
-            onClick={() => { setShowAddModal(true); setFormError(''); setFormData(EMPTY_FORM) }}
-            className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-          >
-            <Plus className="w-5 h-5" />Add Employee
-          </Button>
+          <button onClick={() => { setShowAddModal(true); setFormError(''); setFormData(EMPTY_FORM) }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-all shadow-md shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0">
+            <AddRoundedIcon sx={{ fontSize: 18 }} />Add Employee
+          </button>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { icon: Users, label: 'Total Employees', value: employees.length, color: 'from-blue-600 to-blue-700' },
-              { icon: UserCheck, label: 'Active', value: activeCount, color: 'from-green-600 to-green-700' },
-              { icon: UserMinus, label: 'Inactive', value: inactiveCount, color: 'from-red-600 to-red-700' },
-            ].map((s, i) => (
-              <Card key={i} className="p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-600 mb-1">{s.label}</p>
-                    <h3 className="text-3xl font-bold text-slate-900">{s.value}</h3>
-                  </div>
-                  <div className={`p-3 rounded-lg bg-gradient-to-br ${s.color} text-white`}>
-                    <s.icon className="w-6 h-6" />
-                  </div>
-                </div>
-              </Card>
-            ))}
+            <StatCard icon={<PeopleAltRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />} label="Total Employees" value={employees.length} gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900" iconBg="bg-blue-200" />
+            <StatCard icon={<HowToRegRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />} label="Active" value={employees.filter(e => e.status === 'active').length} gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900" iconBg="bg-emerald-200" />
+            <StatCard icon={<PersonOffOutlinedIcon sx={{ fontSize: 20, color: '#dc2626' }} />} label="Inactive" value={employees.filter(e => e.status === 'inactive').length} gradient="bg-gradient-to-br from-red-50 to-red-100 text-red-900" iconBg="bg-red-200" />
           </div>
 
           {/* Filters */}
-          <Card className="p-5">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Search</label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    placeholder="Name or email..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="pl-9 bg-slate-50"
-                  />
+                  <SearchRoundedIcon sx={{ fontSize: 18, color: '#94a3b8' }} className="absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input placeholder="Name or email…" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full h-10 pl-9 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Department</label>
-                <div className="relative">
-                  <select
-                    value={filterDept}
-                    onChange={e => setFilterDept(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-900 focus:border-blue-500 appearance-none"
-                  >
-                    <option value="all">All Departments</option>
-                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Department</label>
+                <select value={filterDept} onChange={e => setFilterDept(e.target.value)}
+                  className="w-full h-10 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 transition-all appearance-none">
+                  <option value="all">All Departments</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
-                <div className="relative">
-                  <select
-                    value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-900 focus:border-blue-500 appearance-none"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Status</label>
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                  className="w-full h-10 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 transition-all appearance-none">
+                  <option value="all">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
               </div>
               <div className="flex items-end">
-                <p className="text-sm text-slate-600">
-                  Showing <span className="font-semibold text-slate-900">{filtered.length}</span> of {employees.length} employees
-                </p>
+                <p className="text-sm text-slate-500">Showing <span className="font-bold text-slate-900">{filtered.length}</span> of {employees.length}</p>
               </div>
             </div>
-          </Card>
+          </div>
 
           {/* Table */}
-          <Card className="overflow-hidden">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                <span className="ml-3 text-slate-600">Loading employees...</span>
+              <div className="flex items-center justify-center py-16 gap-3">
+                <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span className="text-slate-500 font-medium">Loading employees…</span>
               </div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-16">
-                <Users className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500 font-medium">No employees found</p>
-                <p className="text-slate-400 text-sm mt-1">Try adjusting your filters or add a new employee</p>
+                <PeopleRoundedIcon sx={{ fontSize: 48, color: '#cbd5e1' }} />
+                <p className="text-slate-400 font-semibold mt-3">No employees found</p>
+                <p className="text-slate-300 text-xs mt-1">Try adjusting filters or add a new employee</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Employee</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Department</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Designation</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Contact</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Status</th>
-                      <th className="px-6 py-4 text-right font-semibold text-slate-700">Actions</th>
+                      {['Employee','Department','Designation','Contact','Status','Actions'].map(h => (
+                        <th key={h} className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wide">{h}</th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody className="divide-y divide-slate-50">
                     {filtered.map(emp => (
                       <tr key={emp.uid} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4">
+                        <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
                               {emp.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium text-slate-900">{emp.name}</p>
-                              <p className="text-xs text-slate-500">{emp.email}</p>
+                              <p className="font-semibold text-slate-900">{emp.name}</p>
+                              <p className="text-xs text-slate-400">{emp.email}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          {emp.department ? (
-                            <Badge className="bg-blue-100 text-blue-700 border-0">{emp.department}</Badge>
-                          ) : (
-                            <span className="text-slate-400 text-xs">—</span>
-                          )}
+                        <td className="px-5 py-4">
+                          {emp.department
+                            ? <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">{emp.department}</span>
+                            : <span className="text-slate-300 text-xs">—</span>}
                         </td>
-                        <td className="px-6 py-4 text-slate-700">{emp.designation || <span className="text-slate-400">—</span>}</td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-slate-600">
-                              <Mail className="w-3 h-3" />
-                              <span className="text-xs">{emp.email}</span>
-                            </div>
-                            {emp.phoneNumber && (
-                              <div className="flex items-center gap-2 text-slate-600">
-                                <Phone className="w-3 h-3" />
-                                <span className="text-xs">{emp.phoneNumber}</span>
-                              </div>
-                            )}
+                        <td className="px-5 py-4 text-sm text-slate-600">{emp.designation || <span className="text-slate-300">—</span>}</td>
+                        <td className="px-5 py-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs text-slate-500"><MailRoundedIcon sx={{ fontSize: 13 }} />{emp.email}</div>
+                            {emp.phoneNumber && <div className="flex items-center gap-1.5 text-xs text-slate-500"><PhoneRoundedIcon sx={{ fontSize: 13 }} />{emp.phoneNumber}</div>}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <Badge className={`border-0 ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        <td className="px-5 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                             {emp.status === 'active' ? 'Active' : 'Inactive'}
-                          </Badge>
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-blue-600 hover:bg-blue-50"
-                              onClick={() => openEdit(emp)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => openEdit(emp)} className="p-2 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors"><EditRoundedIcon sx={{ fontSize: 16 }} /></button>
                             {emp.status === 'active' && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-600 hover:bg-red-50"
-                               onClick={() => {
-  setSelectedEmployee({
-    uid: emp.uid,
-    name: emp.name,
-  })
-  setConfirmOpen(true)
-}}
-                              >
-                                <UserX className="w-4 h-4" />
-                              </Button>
+                              <button onClick={() => { setSelectedEmployee({ uid: emp.uid, name: emp.name }); setConfirmDeactivateOpen(true) }} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><PersonOffRoundedIcon sx={{ fontSize: 16 }} /></button>
                             )}
                           </div>
                         </td>
@@ -572,281 +363,116 @@ const confirmDeactivate = async () => {
                 </table>
               </div>
             )}
-          </Card>
+          </div>
         </main>
       </div>
 
-      {/* ════════ ADD EMPLOYEE MODAL ════════ */}
+      {/* ── Add Employee Modal ── */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Add New Employee</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Creates Firebase Auth account + Firestore profile</p>
+                <h2 className="text-xl font-extrabold text-slate-900">Add New Employee</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Creates Firebase Auth + Firestore profile</p>
               </div>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-slate-500" />
+              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                <CloseRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} />
               </button>
             </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleAddEmployee} className="p-6 space-y-5">
-
+            <form onSubmit={handleAddEmployee} className="p-6 space-y-4">
               {formError && (
-                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-700">{formError}</p>
+                <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700">
+                  <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />{formError}
                 </div>
               )}
-
-              {/* Name */}
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-slate-700 font-medium">Full Name <span className="text-red-500">*</span></Label>
-                <Input
-                  id="name"
-                  placeholder="e.g. Priya Rajan"
-                  value={formData.name}
-                  onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
-                  required
-                  className="h-11 bg-slate-50 border-slate-200 focus:border-blue-500"
-                />
-              </div>
-
-              {/* Email */}
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-700 font-medium">Email <span className="text-red-500">*</span></Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="priya@company.com"
-                    value={formData.email}
-                    onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
-                    required
-                    className="pl-9 h-11 bg-slate-50 border-slate-200 focus:border-blue-500"
-                  />
+              {[
+                { label: 'Full Name', name: 'name', type: 'text', placeholder: 'e.g. Priya Rajan', required: true },
+                { label: 'Email', name: 'email', type: 'email', placeholder: 'priya@company.com', required: true },
+                { label: 'Phone Number', name: 'phoneNumber', type: 'text', placeholder: '+91 9876543210', required: false },
+                { label: 'Designation', name: 'designation', type: 'text', placeholder: 'e.g. Software Engineer', required: false },
+              ].map(f => (
+                <div key={f.name} className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{f.label}{f.required && <span className="text-red-500 ml-1">*</span>}</label>
+                  <input type={f.type} placeholder={f.placeholder} value={(formData as any)[f.name]} onChange={e => setFormData(p => ({ ...p, [f.name]: e.target.value }))} required={f.required}
+                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
                 </div>
-              </div>
-
+              ))}
               {/* Password */}
-             {/* Password */}
-<div className="space-y-2">
-  <Label htmlFor="password" className="text-slate-700 font-medium">
-    Temporary Password <span className="text-red-500">*</span>
-  </Label>
-
-  <div className="relative">
-    <Input
-      id="password"
-      type={showPassword ? 'text' : 'password'}
-      placeholder="Min. 6 characters"
-      value={formData.password}
-      onChange={e => setFormData(p => ({ ...p, password: e.target.value }))}
-      required
-      className="pr-10 h-11 bg-slate-50 border-slate-200 focus:border-blue-500"
-    />
-
-    <button
-      type="button"
-      onClick={() => setShowPassword(!showPassword)}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-    >
-      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-    </button>
-  </div>
-
-  {/* Add here */}
-  <p className="text-xs text-slate-500">
-    Password must be at least 6 characters long.
-  </p>
-</div>
-
-              {/* Phone */}
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-slate-700 font-medium">Phone Number</Label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Temporary Password <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    id="phone"
-                    placeholder="+91 9876543210"
-                    value={formData.phoneNumber}
-                    onChange={e => setFormData(p => ({ ...p, phoneNumber: e.target.value }))}
-                    className="pl-9 h-11 bg-slate-50 border-slate-200 focus:border-blue-500"
-                  />
+                  <input type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters" value={formData.password} onChange={e => setFormData(p => ({ ...p, password: e.target.value }))} required
+                    className="w-full h-11 px-4 pr-11 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    {showPassword ? <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 18 }} />}
+                  </button>
                 </div>
+                <p className="text-xs text-slate-400">Password must be at least 6 characters</p>
               </div>
-
               {/* Department */}
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-medium">Department</Label>
-                <div className="relative">
-                  <select
-                    value={formData.department}
-                    onChange={e => setFormData(p => ({ ...p, department: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg bg-slate-50 text-slate-900 focus:border-blue-500 appearance-none h-11"
-                  >
-                    <option value="">Select department</option>
-                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Department</label>
+                <select value={formData.department} onChange={e => setFormData(p => ({ ...p, department: e.target.value }))}
+                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 transition-all appearance-none">
+                  <option value="">Select department</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
-
-              {/* Designation */}
-              <div className="space-y-2">
-                <Label htmlFor="designation" className="text-slate-700 font-medium">Designation</Label>
-                <Input
-                  id="designation"
-                  placeholder="e.g. Software Engineer"
-                  value={formData.designation}
-                  onChange={e => setFormData(p => ({ ...p, designation: e.target.value }))}
-                  className="h-11 bg-slate-50 border-slate-200 focus:border-blue-500"
-                />
-              </div>
-
-              {/* Actions */}
               <div className="flex gap-3 pt-2">
-                <Button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white h-11"
-                >
-                  {submitting ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating account...</>
-                  ) : (
-                    <><Plus className="w-4 h-4 mr-2" />Add Employee</>
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddModal(false)}
-                  className="h-11"
-                >
-                  Cancel
-                </Button>
+                <button type="submit" disabled={submitting} className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                  {submitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Creating…</> : <><AddRoundedIcon sx={{ fontSize: 18 }} />Add Employee</>}
+                </button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="h-11 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ════════ EDIT EMPLOYEE MODAL ════════ */}
+      {/* ── Edit Employee Modal ── */}
       {editEmployee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200">
-              <h2 className="text-xl font-bold text-slate-900">Edit Employee</h2>
-              <button onClick={() => setEditEmployee(null)} className="p-2 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <h2 className="text-xl font-extrabold text-slate-900">Edit Employee</h2>
+              <button onClick={() => setEditEmployee(null)} className="p-2 hover:bg-slate-100 rounded-xl"><CloseRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} /></button>
             </div>
             <form onSubmit={handleEditSave} className="p-6 space-y-4">
-              {editError && (
-                <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
-                  <p className="text-sm text-red-700">{editError}</p>
+              {editError && <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700"><ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />{editError}</div>}
+              {[
+                { label: 'Full Name', key: 'name', placeholder: 'Full name' },
+                { label: 'Phone Number', key: 'phoneNumber', placeholder: '+91 9876543210' },
+                { label: 'Designation', key: 'designation', placeholder: 'Software Engineer' },
+              ].map(f => (
+                <div key={f.key} className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{f.label}</label>
+                  <input value={(editForm as any)[f.key]} onChange={e => setEditForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder}
+                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-medium">Full Name</Label>
-                <Input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} className="h-11 bg-slate-50" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-medium">Phone Number</Label>
-                <Input value={editForm.phoneNumber} onChange={e => setEditForm(p => ({ ...p, phoneNumber: e.target.value }))} className="h-11 bg-slate-50" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-medium">Department</Label>
-                <div className="relative">
-                  <select
-                    value={editForm.department}
-                    onChange={e => setEditForm(p => ({ ...p, department: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg bg-slate-50 text-slate-900 focus:border-blue-500 appearance-none h-11"
-                  >
-                    <option value="">Select department</option>
-                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-medium">Designation</Label>
-                <Input value={editForm.designation} onChange={e => setEditForm(p => ({ ...p, designation: e.target.value }))} className="h-11 bg-slate-50" />
+              ))}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Department</label>
+                <select value={editForm.department} onChange={e => setEditForm(p => ({ ...p, department: e.target.value }))}
+                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 transition-all appearance-none">
+                  <option value="">Select department</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
               <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={editSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white h-11">
-                  {editSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Save Changes'}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setEditEmployee(null)} className="h-11">Cancel</Button>
+                <button type="submit" disabled={editSubmitting} className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                  {editSubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</> : 'Save Changes'}
+                </button>
+                <button type="button" onClick={() => setEditEmployee(null)} className="h-11 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Cancel</button>
               </div>
             </form>
           </div>
-          
         </div>
-        
       )}
-{confirmOpen && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-    <div className="bg-white rounded shadow-lg w-[420px]">
-      
-      {/* Header */}
-      <div className="px-5 py-4 border-b">
-        <h2 className="text-xl font-bold text-blue-700">
-          Are you sure?
-        </h2>
-      </div>
-
-      {/* Body */}
-      <div className="px-5 py-5">
-        <p className="text-gray-700">
-          Are you sure you want to deactivate{' '}
-          <span className="font-semibold">
-            {selectedEmployee?.name}
-          </span>
-          ?
-        </p>
-      </div>
-
-      {/* Footer */}
-      <div className="flex justify-between px-5 pb-4">
-        <Button
-          onClick={confirmDeactivate}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          Confirm
-        </Button>
-
-        <Button
-          variant="destructive"
-          onClick={() => {
-            setConfirmOpen(false)
-            setSelectedEmployee(null)
-          }}
-        >
-          Cancel
-        </Button>
-      </div>
     </div>
-  </div>
-)}
-    </div>
-    
   )
 }
 
-// ─── Page Export with ProtectedRoute ──────────────────────────────────────────
-
 export default function EmployeeManagementPage() {
-  return (
-    <ProtectedRoute requiredRole="admin">
-      <EmployeeManagementContent />
-    </ProtectedRoute>
-  )
+  return <ProtectedRoute requiredRole="admin"><EmployeeManagementContent /></ProtectedRoute>
 }

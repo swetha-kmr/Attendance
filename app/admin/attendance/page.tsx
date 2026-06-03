@@ -1,17 +1,6 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import {
-  Download, Search, Clock, XCircle, CheckCircle,
-  Users, BarChart3, FileText, LogOut, Menu, X,
-  ChevronDown, Loader2,
-  Settings,
-} from 'lucide-react'
-import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { UserProfile } from '@/lib/auth-context'
 import { ProtectedRoute } from '@/lib/protected-route'
@@ -23,64 +12,81 @@ import {
   LeaveRequest,
 } from '@/lib/firestore-service'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Timestamp } from 'firebase/firestore'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+import DashboardRoundedIcon      from '@mui/icons-material/DashboardRounded'
+import PeopleRoundedIcon         from '@mui/icons-material/PeopleRounded'
+import AccessTimeRoundedIcon     from '@mui/icons-material/AccessTimeRounded'
+import EventNoteRoundedIcon      from '@mui/icons-material/EventNoteRounded'
+import SettingsRoundedIcon       from '@mui/icons-material/SettingsRounded'
+import LogoutRoundedIcon         from '@mui/icons-material/LogoutRounded'
+import MenuRoundedIcon           from '@mui/icons-material/MenuRounded'
+import CloseRoundedIcon          from '@mui/icons-material/CloseRounded'
+import FingerprintRoundedIcon    from '@mui/icons-material/FingerprintRounded'
+import CheckCircleRoundedIcon    from '@mui/icons-material/CheckCircleRounded'
+import CancelRoundedIcon         from '@mui/icons-material/CancelRounded'
+import BeachAccessRoundedIcon    from '@mui/icons-material/BeachAccessRounded'
+import HowToRegRoundedIcon       from '@mui/icons-material/HowToRegRounded'
+import SearchRoundedIcon         from '@mui/icons-material/SearchRounded'
+import DownloadRoundedIcon       from '@mui/icons-material/DownloadRounded'
+import FilterListRoundedIcon     from '@mui/icons-material/FilterListRounded'
+import TrendingUpRoundedIcon     from '@mui/icons-material/TrendingUpRounded'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toDateString(ts: Timestamp): string {
-  try { return ts.toDate().toISOString().split('T')[0] }
-  catch { return '' }
+  try { return ts.toDate().toISOString().split('T')[0] } catch { return '' }
 }
-
 function formatTime(ts: Timestamp | undefined | null): string {
   if (!ts) return '—'
-  try { return ts.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-  catch { return '—' }
+  try { return ts.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return '—' }
 }
-
-function calcWorkHours(checkIn?: Timestamp | null, checkOut?: Timestamp | null): string {
-  if (!checkIn) return '—'
-  if (!checkOut) return 'In progress'
+function calcWorkHours(ci?: Timestamp | null, co?: Timestamp | null): string {
+  if (!ci) return '—'
+  if (!co) return 'In progress'
   try {
-    const diffMs = checkOut.toDate().getTime() - checkIn.toDate().getTime()
-    if (diffMs <= 0) return '—'
-    const totalMins = Math.round(diffMs / 60000)
-    const h = Math.floor(totalMins / 60)
-    const m = totalMins % 60
+    const ms = co.toDate().getTime() - ci.toDate().getTime()
+    if (ms <= 0) return '—'
+    const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000)
     return `${h}h ${m}m`
   } catch { return '—' }
 }
-
 function exportCSV(rows: FlatRecord[], date: string) {
-  const header = ['Name', 'Email', 'Department', 'Check In', 'Check Out', 'Work Hours', 'Status']
-  const lines = rows.map(r =>
-    [r.name, r.email, r.department, r.checkIn, r.checkOut, r.workHours, r.status].join(',')
-  )
+  const header = ['Name','Email','Department','Check In','Check Out','Work Hours','Status']
+  const lines = rows.map(r => [r.name,r.email,r.department,r.checkIn,r.checkOut,r.workHours,r.status].join(','))
   const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `attendance-${date}.csv`
-  a.click()
+  const a = document.createElement('a'); a.href = url; a.download = `attendance-${date}.csv`; a.click()
   URL.revokeObjectURL(url)
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface FlatRecord {
-  uid: string
-  name: string
-  email: string
-  department: string
-  checkIn: string
-  checkOut: string
-  workHours: string
+  uid: string; name: string; email: string; department: string
+  checkIn: string; checkOut: string; workHours: string
   status: 'Present' | 'Absent' | 'On Leave'
 }
 
-const DEPARTMENTS = ['Engineering', 'HR', 'Finance', 'Marketing', 'Operations', 'Design']
+const DEPARTMENTS = ['Engineering','HR','Finance','Marketing','Operations','Design']
 
-// ─── Content ──────────────────────────────────────────────────────────────────
+// ── Stat Card — exact same as dashboard ──────────────────────────────────────
+
+function StatCard({ icon, label, value, sub, gradient, iconBg }: {
+  icon: React.ReactNode; label: string; value: number | string; sub: string
+  gradient: string; iconBg: string
+}) {
+  return (
+    <div className={`rounded-2xl p-5 ${gradient} relative overflow-hidden group`}>
+      <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/10 group-hover:scale-125 transition-transform duration-500" />
+      <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center mb-4`}>{icon}</div>
+      <p className="text-xs font-semibold uppercase tracking-wider opacity-70 mb-1">{label}</p>
+      <p className="text-2xl font-black">{value}</p>
+      <p className="text-xs opacity-60 mt-0.5">{sub}</p>
+    </div>
+  )
+}
+
+// ── Main Content ──────────────────────────────────────────────────────────────
 
 function AttendanceContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -97,323 +103,324 @@ function AttendanceContent() {
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
 
-  // ── Subscriptions ────────────────────────────────────────────────────────
-
   useEffect(() => {
     let count = 0
     const done = () => { count++; if (count === 3) setLoading(false) }
-    const unsubUsers  = subscribeToUsers(data  => { setUsers(data);      done() })
-    const unsubAtt    = subscribeToAttendance(data => { setAttendance(data); done() })
-    const unsubLeaves = subscribeToLeaveRequests(data => { setLeaves(data);  done() })
-    return () => { unsubUsers(); unsubAtt(); unsubLeaves() }
+    const u1 = subscribeToUsers(d => { setUsers(d); done() })
+    const u2 = subscribeToAttendance(d => { setAttendance(d); done() })
+    const u3 = subscribeToLeaveRequests(d => { setLeaves(d); done() })
+    return () => { u1(); u2(); u3() }
   }, [])
-
-  // ── Build flat records for the selected date ─────────────────────────────
 
   const records: FlatRecord[] = useMemo(() => {
     const employees = users.filter(u => u.role === 'employee' && u.status === 'active')
-
-    // UIDs with an approved leave covering selectedDate
     const onLeaveUids = new Set(
-      leaves
-        .filter(l => {
-          if (l.status !== 'approved') return false
-          const start = toDateString(l.startDate)
-          const end   = toDateString(l.endDate)
-          return selectedDate >= start && selectedDate <= end
-        })
-        .map(l => l.uid)
+      leaves.filter(l => {
+        if (l.status !== 'approved') return false
+        const s = toDateString(l.startDate), e = toDateString(l.endDate)
+        return selectedDate >= s && selectedDate <= e
+      }).map(l => l.uid)
     )
-
-    // ── KEY FIX: keep only the MOST RECENT record per uid for this date ──
-    // subscribeToAttendance returns records ordered by date desc, so iterating
-    // them all and keeping the latest prevents an old check-in (no checkOutTime)
-    // from overwriting a newer record that already has checkOutTime set.
     const attMap = new Map<string, AttendanceRecord>()
-    attendance
-      .filter(a => toDateString(a.date) === selectedDate)
-      .forEach(a => {
-        const existing = attMap.get(a.uid)
-        if (!existing) {
-          attMap.set(a.uid, a)
-        } else {
-          // Keep whichever record has the later date timestamp
-          try {
-            const existingMs = existing.date.toDate().getTime()
-            const newMs      = a.date.toDate().getTime()
-            if (newMs > existingMs) attMap.set(a.uid, a)
-          } catch {
-            attMap.set(a.uid, a)
-          }
-        }
-      })
-
+    attendance.filter(a => toDateString(a.date) === selectedDate).forEach(a => {
+      const ex = attMap.get(a.uid)
+      if (!ex) { attMap.set(a.uid, a); return }
+      try { if (a.date.toDate().getTime() > ex.date.toDate().getTime()) attMap.set(a.uid, a) } catch { attMap.set(a.uid, a) }
+    })
     return employees.map(emp => {
       const dept = emp.department || '—'
-
-      if (onLeaveUids.has(emp.uid)) {
-        return {
-          uid: emp.uid, name: emp.name, email: emp.email, department: dept,
-          checkIn: '—', checkOut: '—', workHours: 'On Leave', status: 'On Leave',
-        }
-      }
-
+      if (onLeaveUids.has(emp.uid)) return { uid: emp.uid, name: emp.name, email: emp.email, department: dept, checkIn: '—', checkOut: '—', workHours: 'On Leave', status: 'On Leave' }
       const att = attMap.get(emp.uid)
-      if (att) {
-        return {
-          uid: emp.uid,
-          name: emp.name,
-          email: emp.email,
-          department: dept,
-          checkIn:   formatTime(att.checkInTime),
-          checkOut:  formatTime(att.checkOutTime),   // now correctly shows time
-          workHours: calcWorkHours(att.checkInTime, att.checkOutTime),
-          status: 'Present',
-        }
-      }
-
-      return {
-        uid: emp.uid, name: emp.name, email: emp.email, department: dept,
-        checkIn: '—', checkOut: '—', workHours: '—', status: 'Absent',
-      }
+      if (att) return { uid: emp.uid, name: emp.name, email: emp.email, department: dept, checkIn: formatTime(att.checkInTime), checkOut: formatTime(att.checkOutTime), workHours: calcWorkHours(att.checkInTime, att.checkOutTime), status: 'Present' }
+      return { uid: emp.uid, name: emp.name, email: emp.email, department: dept, checkIn: '—', checkOut: '—', workHours: '—', status: 'Absent' }
     })
   }, [users, attendance, leaves, selectedDate])
 
-  // ── Filter ───────────────────────────────────────────────────────────────
-
   const filtered = useMemo(() =>
     records.filter(r => {
-      const matchSearch = r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.email.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchStatus = statusFilter === 'all' || r.status === statusFilter
-      const matchDept   = deptFilter   === 'all' || r.department === deptFilter
-      return matchSearch && matchStatus && matchDept
-    }),
-    [records, searchTerm, statusFilter, deptFilter]
-  )
+      const ms = r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.email.toLowerCase().includes(searchTerm.toLowerCase())
+      const ss = statusFilter === 'all' || r.status === statusFilter
+      const ds = deptFilter === 'all' || r.department === deptFilter
+      return ms && ss && ds
+    }), [records, searchTerm, statusFilter, deptFilter])
 
   const total   = records.length
   const present = records.filter(r => r.status === 'Present').length
   const absent  = records.filter(r => r.status === 'Absent').length
   const onLeave = records.filter(r => r.status === 'On Leave').length
+  const checkedOut = records.filter(r => r.status === 'Present' && r.checkOut !== '—').length
+  const attendancePct = total > 0 ? Math.round((present / total) * 100) : 0
 
-  const handleLogout = async () => { await signOut(); router.push('/') }
+  const handleLogout = async () => {
+    await signOut(); router.push('/')
+  }
 
-  const menuItems = [
-    { label: 'Dashboard',      icon: BarChart3, href: '/admin/dashboard' },
-    { label: 'Employees',      icon: Users,     href: '/admin/employees' },
-    { label: 'Attendance',     icon: Clock,     href: '/admin/attendance', active: true },
-    { label: 'Leave Requests', icon: FileText,  href: '/admin/leaves' },
-      { label: 'Settings', icon: Settings, href: '/admin/settings' },
+  const navItems = [
+    { href: '/admin/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: false },
+    { href: '/admin/employees', icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Employees',      active: false },
+    { href: '/admin/attendance',icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />, label: 'Attendance',     active: true  },
+    { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Leave Requests', active: false },
+    { href: '/admin/settings',  icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Settings',       active: false },
   ]
 
-  // ── Render ───────────────────────────────────────────────────────────────
-
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex flex-col h-full">
-          <div className="px-6 py-6 border-b border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center font-bold">A</div>
-              <div>
-                <h1 className="font-bold text-slate-900">Attendance</h1>
-                <p className="text-xs text-slate-500">Admin Panel</p>
-              </div>
+      {/* ── Sidebar — identical to dashboard ── */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-5 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-md shadow-blue-200">
+              <FingerprintRoundedIcon sx={{ fontSize: 20, color: '#fff' }} />
+            </div>
+            <div>
+              <p className="font-extrabold text-slate-900 text-sm leading-tight">SeyonSync</p>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Admin Panel</p>
             </div>
           </div>
-          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-            {menuItems.map(item => (
-              <Link key={item.label} href={item.href}>
-                <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors text-left ${item.active ? 'bg-blue-50 text-blue-700' : ''}`}>
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </button>
-              </Link>
-            ))}
-          </nav>
-          <div className="px-4 py-6 border-t border-slate-200 space-y-4">
-            <div className="px-4 py-3 bg-slate-50 rounded-lg">
-              <p className="text-xs text-slate-600">Logged in as</p>
-              <p className="font-medium text-slate-900 text-sm">{userProfile?.name}</p>
-              <p className="text-xs text-slate-500">{userProfile?.email}</p>
+        </div>
+        <nav className="flex-1 px-3 py-5 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
+          {navItems.map(item => (
+            <Link key={item.href} href={item.href}>
+              <button className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 text-left ${item.active ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+                <span className={item.active ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
+                {item.label}
+                {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
+              </button>
+            </Link>
+          ))}
+        </nav>
+        <div className="px-3 py-4 border-t border-slate-100 space-y-3">
+          <div className="px-3 py-3 bg-slate-50 rounded-xl flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+              {userProfile?.name?.charAt(0) ?? 'A'}
             </div>
-            <Button onClick={handleLogout} className="w-full bg-red-600 hover:bg-red-700 text-white">
-              <LogOut className="w-4 h-4 mr-2" />Sign Out
-            </Button>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 truncate">{userProfile?.name ?? 'Admin'}</p>
+              <p className="text-[11px] text-slate-400 truncate">{userProfile?.email}</p>
+            </div>
           </div>
+          <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm">
+            <LogoutRoundedIcon sx={{ fontSize: 18 }} />Sign Out
+          </button>
         </div>
       </aside>
 
-      {/* Main */}
+      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+
+      {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-2 hover:bg-slate-100 rounded-lg">
-              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Attendance Management</h1>
-              <p className="text-sm text-slate-500">
-                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </p>
-            </div>
+        <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-4 sticky top-0 z-20">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+            {sidebarOpen ? <CloseRoundedIcon /> : <MenuRoundedIcon />}
+          </button>
+          <div className="flex-1">
+            <h1 className="text-xl font-extrabold text-slate-900 leading-tight">Attendance</h1>
+            <p className="text-xs text-slate-400">
+              {new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
           </div>
-          <Button onClick={() => exportCSV(filtered, selectedDate)} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
-            <Download className="w-5 h-5" />Export CSV
-          </Button>
+          <button
+            onClick={() => exportCSV(filtered, selectedDate)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors"
+          >
+            <DownloadRoundedIcon sx={{ fontSize: 16 }} />Export CSV
+          </button>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { icon: CheckCircle, label: 'Present',         value: present, color: 'from-green-600 to-green-700', sub: total ? `${Math.round((present / total) * 100)}% attendance` : '0%' },
-              { icon: XCircle,     label: 'Absent',          value: absent,  color: 'from-red-600 to-red-700',     sub: total ? `${Math.round((absent  / total) * 100)}% absent`     : '0%' },
-              { icon: Clock,       label: 'On Leave',        value: onLeave, color: 'from-amber-600 to-amber-700', sub: total ? `${Math.round((onLeave / total) * 100)}% on leave`    : '0%' },
-              { icon: Users,       label: 'Total Employees', value: total,   color: 'from-blue-600 to-blue-700',   sub: `${present} present today` },
-            ].map((s, i) => (
-              <Card key={i} className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-600 mb-1">{s.label}</p>
-                    <h3 className="text-3xl font-bold text-slate-900">{s.value}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
-                  </div>
-                  <div className={`p-3 rounded-lg bg-gradient-to-br ${s.color} text-white`}>
-                    <s.icon className="w-5 h-5" />
-                  </div>
-                </div>
-              </Card>
-            ))}
+          {/* ── Stat Cards — same as dashboard ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <StatCard
+              icon={<PeopleRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />}
+              label="Total" value={total} sub="employees"
+              gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900"
+              iconBg="bg-blue-200"
+            />
+            <StatCard
+              icon={<CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />}
+              label="Present" value={present} sub={`${attendancePct}% rate`}
+              gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900"
+              iconBg="bg-emerald-200"
+            />
+            <StatCard
+              icon={<CancelRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />}
+              label="Absent" value={absent} sub="not checked in"
+              gradient="bg-gradient-to-br from-red-50 to-red-100 text-red-900"
+              iconBg="bg-red-200"
+            />
+            <StatCard
+              icon={<BeachAccessRoundedIcon sx={{ fontSize: 20, color: '#d97706' }} />}
+              label="On Leave" value={onLeave} sub="approved today"
+              gradient="bg-gradient-to-br from-amber-50 to-amber-100 text-amber-900"
+              iconBg="bg-amber-200"
+            />
+            <StatCard
+              icon={<HowToRegRoundedIcon sx={{ fontSize: 20, color: '#7c3aed' }} />}
+              label="Checked Out" value={checkedOut} sub="done for today"
+              gradient="bg-gradient-to-br from-violet-50 to-violet-100 text-violet-900"
+              iconBg="bg-violet-200"
+            />
           </div>
 
-          {/* Filters */}
-          <Card className="p-5">
+          {/* ── Attendance Rate Bar — same as dashboard ── */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <TrendingUpRoundedIcon sx={{ fontSize: 18, color: '#2563eb' }} />
+                <span className="font-extrabold text-slate-900 text-sm">Today's Attendance Rate</span>
+              </div>
+              <span className="text-2xl font-black text-blue-600">{attendancePct}%</span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-3">
+              <div className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-700" style={{ width: `${attendancePct}%` }} />
+            </div>
+            <div className="flex justify-between mt-2 text-xs text-slate-400 font-medium">
+              <span>{present} present</span>
+              <span>{absent} absent · {onLeave} on leave</span>
+            </div>
+          </div>
+
+          {/* ── Filters — same panel style as dashboard ── */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <FilterListRoundedIcon sx={{ fontSize: 18, color: '#2563eb' }} />
+              <h2 className="font-extrabold text-slate-900 text-sm">Filter Records</h2>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Date</label>
-                <Input type="date" value={selectedDate} max={new Date().toISOString().split('T')[0]} onChange={e => setSelectedDate(e.target.value)} className="bg-slate-50" />
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Date</label>
+                <input
+                  type="date" value={selectedDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Search</label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input placeholder="Name or email..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9 bg-slate-50" />
+                  <SearchRoundedIcon sx={{ fontSize: 16 }} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    placeholder="Name or email…"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none"
+                  />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
-                <div className="relative">
-                  <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-900 focus:border-blue-500 appearance-none">
-                    <option value="all">All Status</option>
-                    <option value="Present">Present</option>
-                    <option value="Absent">Absent</option>
-                    <option value="On Leave">On Leave</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Status</label>
+                <select
+                  value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="all">All Status</option>
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="On Leave">On Leave</option>
+                </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Department</label>
-                <div className="relative">
-                  <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-900 focus:border-blue-500 appearance-none">
-                    <option value="all">All Departments</option>
-                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Department</label>
+                <select
+                  value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="all">All Departments</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
             </div>
-            <p className="text-sm text-slate-500 mt-3">
-              Showing <span className="font-semibold text-slate-800">{filtered.length}</span> of {records.length} employees
+            <p className="text-xs text-slate-400 mt-3 font-medium">
+              Showing <span className="font-bold text-slate-700">{filtered.length}</span> of {total} employees
             </p>
-          </Card>
+          </div>
 
-          {/* Table */}
-          <Card className="overflow-hidden">
+          {/* ── Table — same panel style as dashboard ── */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
+              <AccessTimeRoundedIcon sx={{ fontSize: 18, color: '#2563eb' }} />
+              <h2 className="font-extrabold text-slate-900 text-sm">Attendance Records</h2>
+              <span className="ml-auto text-xs text-slate-400 font-medium">{filtered.length} employees</span>
+            </div>
+
             {loading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                <span className="ml-3 text-slate-600">Loading attendance data...</span>
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span className="ml-3 text-slate-500 text-sm font-medium">Loading attendance data…</span>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="text-center py-20">
-                <Clock className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500 font-medium">No records found</p>
-                <p className="text-slate-400 text-sm mt-1">Try changing the date or filters</p>
+              <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                <AccessTimeRoundedIcon sx={{ fontSize: 40 }} />
+                <p className="text-sm mt-2 font-medium text-slate-400">No records found</p>
+                <p className="text-xs text-slate-300 mt-1">Try changing the date or filters</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-slate-50 sticky top-0">
                     <tr>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Employee</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Department</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Check In</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Check Out</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Work Hours</th>
-                      <th className="px-6 py-4 text-left font-semibold text-slate-700">Status</th>
+                      {['Employee', 'Department', 'Check In', 'Check Out', 'Work Hours', 'Status'].map(h => (
+                        <th key={h} className="px-4 py-2.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wide">{h}</th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {filtered.map(record => (
-                      <tr key={record.uid} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-semibold text-sm shrink-0">
-                              {record.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+                  <tbody className="divide-y divide-slate-50">
+                    {filtered.map(record => {
+                      const initials = record.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                      return (
+                        <tr key={record.uid} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                {initials}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-900 text-xs leading-tight">{record.name}</p>
+                                <p className="text-[11px] text-slate-400">{record.email}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium text-slate-900">{record.name}</p>
-                              <p className="text-xs text-slate-500">{record.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <Badge className="bg-blue-100 text-blue-700 border-0">{record.department}</Badge>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-slate-700">
-                            <Clock className="w-4 h-4 text-slate-400" />
-                            <span>{record.checkIn}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-slate-400" />
-                            {record.checkOut === '—'
-                              ? <span className="text-slate-400">—</span>
-                              : <span className="text-slate-700 font-medium">{record.checkOut}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700">
+                              {record.department}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-600">
+                            {record.checkIn === '—' ? <span className="text-slate-300">—</span> : record.checkIn}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-600">
+                            {record.checkOut === '—' ? <span className="text-slate-300">—</span> : <span className="font-medium">{record.checkOut}</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700">
+                            {record.workHours === 'In progress'
+                              ? <span className="flex items-center gap-1.5 text-green-600 text-[11px] font-bold"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />In progress</span>
+                              : record.workHours
                             }
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {record.workHours === 'In progress'
-                            ? <span className="flex items-center gap-1.5 text-green-600 font-medium text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />In progress</span>
-                            : <span className="font-medium text-slate-700">{record.workHours}</span>
-                          }
-                        </td>
-                        <td className="px-6 py-4">
-                          <Badge className={`border-0 ${
-                            record.status === 'Present'  ? 'bg-green-100 text-green-700' :
-                            record.status === 'Absent'   ? 'bg-red-100 text-red-700'     :
-                                                           'bg-amber-100 text-amber-700'
-                          }`}>
-                            {record.status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                              record.status === 'Present'  ? 'bg-emerald-100 text-emerald-700' :
+                              record.status === 'Absent'   ? 'bg-red-100 text-red-600' :
+                                                             'bg-amber-100 text-amber-700'
+                            }`}>
+                              {record.status === 'Present' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                              {record.status}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
-          </Card>
+          </div>
 
         </main>
       </div>

@@ -324,7 +324,7 @@ function EmployeeDashboardContent() {
               <FingerprintRoundedIcon sx={{ fontSize: 20, color: '#fff' }} />
             </div>
             <div>
-              <p className="font-extrabold text-slate-900 text-sm leading-tight">AttendTrack</p>
+              <p className="font-extrabold text-slate-900 text-sm leading-tight">SeyonSync</p>
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Employee Portal</p>
             </div>
           </div>
@@ -360,9 +360,9 @@ function EmployeeDashboardContent() {
               <p className="text-[11px] text-slate-400 truncate">{userProfile?.email}</p>
             </div>
           </div>
-          <button
+           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
           >
             <LogoutRoundedIcon sx={{ fontSize: 18 }} />
             Sign Out
