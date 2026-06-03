@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { ProtectedRoute } from '@/lib/protected-route'
-import { getLeaveRequests, updateLeaveRequest, LeaveRequest } from '@/lib/firestore-service'
+// import { getLeaveRequests, updateLeaveRequest, LeaveRequest } from '@/lib/firestore-service'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
