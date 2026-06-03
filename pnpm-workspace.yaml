@@ -1,0 +1,7 @@
+allowBuilds:
+  '@firebase/util': false
+  protobufjs: false
+  sharp: false
+minimumReleaseAgeExclude:
+  - react-dom@19.2.7
+  - react@19.2.7
