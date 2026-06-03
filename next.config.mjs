@@ -1,14 +1,15 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
   trailingSlash: true,
-
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  basePath: '/Attendance',
+  assetPrefix: '/Attendance/',
 
   images: {
     unoptimized: true,
+  },
+
+  typescript: {
+    ignoreBuildErrors: true,
   },
 }
 
