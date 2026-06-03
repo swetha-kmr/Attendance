@@ -84,7 +84,6 @@ function EmployeeManagementContent() {
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
 
-
   // ── Load employees ──────────────────────────────────────────────────────────
 
   const loadEmployees = async () => {
@@ -117,124 +116,102 @@ function EmployeeManagementContent() {
 
   // ── Add Employee ────────────────────────────────────────────────────────────
 
-  const handleAddEmployee = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setFormError('')
-    setSubmitting(true)
-    const validationErrors = validateEmployeeForm()
 
-    try {
-      // Validate
-     if (validationErrors.length > 0) {
-  setFormError(validationErrors[0])
-  setSubmitting(false)
-  return
-}
-      if (formData.password.length < 6) {
-        throw new Error('Password must be at least 6 characters')
-      }
 
-      // 1. Create Firebase Auth user
-   
-const userCredential = await createUserWithEmailAndPassword(
-  secondaryAuth,
-  formData.email,
-  formData.password
-)
-
-console.log('Admin Auth User:', auth.currentUser?.email)
-console.log('Secondary Auth User:', secondaryAuth.currentUser?.email)
-      // 2. Create Firestore profile
-      const newProfile: UserProfile = {
-        uid: userCredential.user.uid,
-        email: formData.email,
-        name: formData.name,
-        role: 'employee',
-        phoneNumber: formData.phoneNumber,
-        department: formData.department,
-        designation: formData.designation,
-        createdAt: Timestamp.now(),
-        lastLogin: Timestamp.now(),
-        status: 'active',
-      }
-      await createUser(newProfile)
-
-      
-toast.success(`user added successfully!`)
-
-      setFormData(EMPTY_FORM)
-      setShowAddModal(false)
-      await loadEmployees()
-    } catch (err: any) {
-      // Firebase auth error codes
-      if (err.code === 'auth/email-already-in-use') {
-        setFormError('This email is already registered')
-      } else if (err.code === 'auth/invalid-email') {
-        setFormError('Invalid email address')
-      } else if (err.code === 'auth/weak-password') {
-        setFormError('Password is too weak')
-      } else {
-        setFormError(err.message || 'Failed to create employee')
-      }
-    } finally {
-      setSubmitting(false)
-    }
-  }
   const validateEmployeeForm = () => {
   const errors: string[] = []
 
-  const name = formData.name.trim()
-  const email = formData.email.trim()
-  const phone = formData.phoneNumber.trim()
-
-  // Name
-  if (!name) {
-    errors.push('Full name is required')
-  } else if (name.length < 3) {
-    errors.push('Full name must be at least 3 characters')
-  } else if (!/^[a-zA-Z\s]+$/.test(name)) {
-    errors.push('Full name can contain only letters and spaces')
+  if (!formData.name.trim()) {
+    errors.push('Name is required')
   }
 
-  // Email
-  if (!email) {
-    errors.push('Email address is required')
-  } else if (
-    !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email)
-  ) {
-    errors.push('Please enter a valid email address')
+  if (!formData.email.trim()) {
+    errors.push('Email is required')
   }
 
-  // Password
- // Password
-if (!formData.password) {
-  errors.push('Password is required')
-} else if (formData.password.length < 6) {
-  errors.push('Password must be at least 6 characters')
-} else if (!/(?=.*[A-Za-z])(?=.*\d)/.test(formData.password)) {
-  errors.push('Password must contain at least one letter and one number')
-}
-
-  // Phone
-  if (phone) {
-    const phoneRegex = /^[6-9]\d{9}$/
-
-    if (!phoneRegex.test(phone.replace(/\s+/g, ''))) {
-      errors.push('Please enter a valid 10-digit mobile number')
-    }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    errors.push('Invalid email format')
   }
 
-  // Department
+  if (!formData.password) {
+    errors.push('Password is required')
+  }
+
+  if (formData.password && formData.password.length < 6) {
+    errors.push('Password must be at least 6 characters')
+  }
+
   if (!formData.department) {
-    errors.push('Please select a department')
+    errors.push('Department is required')
   }
 
-  // Designation
-  if (!formData.designation.trim()) {
+  if (!formData.designation) {
     errors.push('Designation is required')
   }
 
   return errors
+}
+ const handleAddEmployee = async (e: React.FormEvent) => {
+  e.preventDefault()
+  setFormError('')
+  setSubmitting(true)
+
+  try {
+    // 1. Validate first
+    const validationErrors = validateEmployeeForm()
+
+    if (validationErrors.length > 0) {
+      setFormError(validationErrors[0])
+      return
+    }
+
+    if (formData.password.length < 6) {
+      setFormError('Password must be at least 6 characters')
+      return
+    }
+
+    // 2. Create Firebase Auth user
+    const userCredential = await createUserWithEmailAndPassword(
+      secondaryAuth,
+      formData.email,
+      formData.password
+    )
+
+    // 3. Create Firestore profile
+    const newProfile: UserProfile = {
+      uid: userCredential.user.uid,
+      email: formData.email,
+      name: formData.name,
+      role: 'employee',
+      phoneNumber: formData.phoneNumber,
+      department: formData.department,
+      designation: formData.designation,
+      createdAt: Timestamp.now(),
+      lastLogin: Timestamp.now(),
+      status: 'active',
+    }
+
+    await createUser(newProfile)
+
+    // 4. Success actions
+    toast.success(`${formData.name} added successfully!`) // better than setFormSuccess
+    setFormData(EMPTY_FORM)
+    setShowAddModal(false)
+    await loadEmployees()
+
+  } catch (err: any) {
+    if (err.code === 'auth/email-already-in-use') {
+      setFormError('This email is already registered')
+    } else if (err.code === 'auth/invalid-email') {
+      setFormError('Invalid email address')
+    } else if (err.code === 'auth/weak-password') {
+      setFormError('Password is too weak')
+    } else {
+      setFormError(err.message || 'Failed to create employee')
+    }
+  } finally {
+    setSubmitting(false)
+  }
 }
 
   // ── Edit Employee ───────────────────────────────────────────────────────────
@@ -264,7 +241,6 @@ if (!formData.password) {
       })
       setEditEmployee(null)
       await loadEmployees()
-     toast.success('Employee updated successfully!')
     } catch (err: any) {
       setEditError(err.message || 'Failed to update employee')
     } finally {
@@ -327,6 +303,15 @@ const confirmDeactivate = async () => {
     toast.error('Failed to deactivate employee')
   }
 }
+  // const handleDeactivate = async (uid: string, name: string) => {
+  //   if (!confirm(`Deactivate ${name}? They will lose access to the system.`)) return
+  //   try {
+  //     await deactivateUser(uid)
+  //     await loadEmployees()
+  //   } catch (err) {
+  //     console.error('Error deactivating employee:', err)
+  //   }
+  // }
 
   // ── Filter ──────────────────────────────────────────────────────────────────
 
