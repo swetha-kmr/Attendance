@@ -1,12 +1,14 @@
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  // output: 'export',        // comment out for local dev
-  // trailingSlash: true,     // comment out for local dev
-  // basePath: '/Attendance', // comment out for local dev
-  // assetPrefix: '/Attendance/', // comment out for local dev
+  output: 'export',
+  trailingSlash: true,
+  basePath: '/Attendance',
+  assetPrefix: '/Attendance/',
 
   images: {
     unoptimized: true,
   },
+
   typescript: {
     ignoreBuildErrors: true,
   },
