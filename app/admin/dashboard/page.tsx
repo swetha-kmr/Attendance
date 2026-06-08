@@ -28,6 +28,7 @@ import HowToRegRoundedIcon       from '@mui/icons-material/HowToRegRounded'
 import TrendingUpRoundedIcon     from '@mui/icons-material/TrendingUpRounded'
 import FiberManualRecordRoundedIcon from '@mui/icons-material/FiberManualRecordRounded'
 import WarningAmberRoundedIcon   from '@mui/icons-material/WarningAmberRounded'
+import AssignmentRoundedIcon    from '@mui/icons-material/AssignmentRounded'
 import SpeedRoundedIcon          from '@mui/icons-material/SpeedRounded'
 
 // ── Sad Person Illustration ───────────────────────────────────────────────────
@@ -199,7 +200,8 @@ function AdminDashboardContent() {
     { href: '/admin/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: true  },
     { href: '/admin/employees', icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Employees',      active: false },
     { href: '/admin/attendance',icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,label: 'Attendance',     active: false },
-    { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests', active: false },
+    // { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests', active: false },
+    {href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status', active: false },
     { href: '/admin/settings',  icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Settings',       active: false },
   ]
 
@@ -448,7 +450,7 @@ function AdminDashboardContent() {
                 {[
                   { label: 'Manage Employees', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />,     href: '/admin/employees' },
                   { label: 'View Attendance',  icon: <AccessTimeRoundedIcon sx={{ fontSize: 18 }} />, href: '/admin/attendance' },
-                  { label: 'Approve Leaves',   icon: <EventNoteRoundedIcon sx={{ fontSize: 18 }} />,  href: '/admin/leaves' },
+                  // { label: 'Approve Leaves',   icon: <EventNoteRoundedIcon sx={{ fontSize: 18 }} />,  href: '/admin/leaves' },
                 ].map(a => (
                   <Link key={a.label} href={a.href}>
                     <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-all text-sm font-semibold hover:-translate-y-0.5 active:translate-y-0">

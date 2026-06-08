@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -7,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { secondaryAuth } from '@/lib/firebase'
-import { createUser, getAllUsers, updateUser, deactivateUser } from '@/lib/firestore-service'
+import { createUser, getAllUsers, updateUser, deactivateUser, activateUser } from '@/lib/firestore-service'
 import { Timestamp } from 'firebase/firestore'
 import { toast } from 'sonner'
 
@@ -20,6 +21,7 @@ import SettingsRoundedIcon         from '@mui/icons-material/SettingsRounded'
 import LogoutRoundedIcon           from '@mui/icons-material/LogoutRounded'
 import MenuRoundedIcon             from '@mui/icons-material/MenuRounded'
 import CloseRoundedIcon            from '@mui/icons-material/CloseRounded'
+import AssignmentRoundedIcon       from '@mui/icons-material/AssignmentRounded' 
 import FingerprintRoundedIcon      from '@mui/icons-material/FingerprintRounded'
 import AddRoundedIcon              from '@mui/icons-material/AddRounded'
 import SearchRoundedIcon           from '@mui/icons-material/SearchRounded'
@@ -30,11 +32,10 @@ import PhoneRoundedIcon            from '@mui/icons-material/PhoneRounded'
 import VisibilityRoundedIcon       from '@mui/icons-material/VisibilityRounded'
 import VisibilityOffRoundedIcon    from '@mui/icons-material/VisibilityOffRounded'
 import ErrorRoundedIcon            from '@mui/icons-material/ErrorRounded'
-import CheckCircleRoundedIcon      from '@mui/icons-material/CheckCircleRounded'
 import PeopleAltRoundedIcon        from '@mui/icons-material/PeopleAltRounded'
 import HowToRegRoundedIcon         from '@mui/icons-material/HowToRegRounded'
 import PersonOffOutlinedIcon       from '@mui/icons-material/PersonOffOutlined'
-import WarningAmberRoundedIcon     from '@mui/icons-material/WarningAmberRounded'
+import CheckCircleRoundedIcon      from '@mui/icons-material/CheckCircleRounded'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface UserProfile {
@@ -42,9 +43,58 @@ interface UserProfile {
   phoneNumber?: string; department?: string; designation?: string
   createdAt: Timestamp; lastLogin: Timestamp; status: 'active' | 'inactive'
 }
-interface NewEmployeeForm { name: string; email: string; password: string; phoneNumber: string; department: string; designation: string }
+interface NewEmployeeForm {
+  name: string; email: string; password: string
+  phoneNumber: string; department: string; designation: string
+}
+type FormErrors = Partial<Record<keyof NewEmployeeForm, string>>
+type TouchedFields = Partial<Record<keyof NewEmployeeForm, boolean>>
+
 const EMPTY_FORM: NewEmployeeForm = { name: '', email: '', password: '', phoneNumber: '', department: '', designation: '' }
 const DEPARTMENTS = ['Engineering', 'HR', 'Finance', 'Marketing', 'Operations', 'Design']
+
+// ── Validation rules ──────────────────────────────────────────────────────────
+function validateField(field: keyof NewEmployeeForm, value: string): string {
+  switch (field) {
+    case 'name':
+      if (!value.trim()) return 'Full name is required'
+      if (value.trim().length < 2) return 'Name must be at least 2 characters'
+      if (!/^[a-zA-Z\s.'-]+$/.test(value.trim())) return 'Name can only contain letters, spaces, and . \' -'
+      return ''
+    case 'email':
+      if (!value.trim()) return 'Email address is required'
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return 'Enter a valid email address'
+      return ''
+    case 'password':
+      if (!value) return 'Password is required'
+      if (value.length < 6) return 'Password must be at least 6 characters'
+      if (!/[A-Z]/.test(value)) return 'Include at least one uppercase letter'
+      if (!/[0-9]/.test(value)) return 'Include at least one number'
+      return ''
+    case 'phoneNumber':
+      if (!value.trim()) return 'Phone number is required'
+      if (!/^[+]?[\d\s\-().]{7,15}$/.test(value.trim())) return 'Enter a valid phone number'
+      return ''
+    case 'designation':
+      if (!value.trim()) return 'Designation is required'
+      if (value.trim().length < 2) return 'Designation must be at least 2 characters'
+      return ''
+    case 'department':
+      if (!value) return 'Please select a department'
+      return ''
+    default:
+      return ''
+  }
+}
+
+function validateAll(form: NewEmployeeForm): FormErrors {
+  const errors: FormErrors = {}
+  ;(Object.keys(form) as (keyof NewEmployeeForm)[]).forEach(key => {
+    const err = validateField(key, form[key])
+    if (err) errors[key] = err
+  })
+  return errors
+}
 
 // ── Sad Person Illustration ───────────────────────────────────────────────────
 function SadPersonIllustration() {
@@ -90,8 +140,45 @@ function ConfirmModal({ show, onClose, onConfirm, illustration, title, subtitle,
   )
 }
 
+// ── Field wrapper with error + success indicator ──────────────────────────────
+function FormField({
+  label, required, error, touched, success, children,
+}: {
+  label: string; required?: boolean; error?: string; touched?: boolean; success?: boolean; children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        {label}{required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+      <div className="relative">{children}</div>
+      {touched && error && (
+        <div className="flex items-center gap-1.5 mt-1">
+          <ErrorRoundedIcon sx={{ fontSize: 14, color: '#dc2626' }} />
+          <p className="text-xs text-red-600 font-medium">{error}</p>
+        </div>
+      )}
+      {touched && !error && success && (
+        <div className="flex items-center gap-1.5 mt-1">
+          <CheckCircleRoundedIcon sx={{ fontSize: 14, color: '#16a34a' }} />
+          <p className="text-xs text-green-600 font-medium">Looks good!</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function inputClass(error?: string, touched?: boolean) {
+  const base = 'w-full h-11 px-4 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all bg-slate-50'
+  if (touched && error)  return `${base} border-red-400 focus:border-red-500 focus:ring-red-100 bg-red-50/30`
+  if (touched && !error) return `${base} border-green-400 focus:border-green-500 focus:ring-green-100`
+  return `${base} border-slate-200 focus:border-blue-500 focus:ring-blue-100`
+}
+
 // ── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, gradient, iconBg }: { icon: React.ReactNode; label: string; value: string | number; gradient: string; iconBg: string }) {
+function StatCard({ icon, label, value, gradient, iconBg }: {
+  icon: React.ReactNode; label: string; value: string | number; gradient: string; iconBg: string
+}) {
   return (
     <div className={`rounded-2xl p-5 ${gradient} relative overflow-hidden group`}>
       <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/10 group-hover:scale-125 transition-transform duration-500" />
@@ -111,22 +198,27 @@ function EmployeeManagementContent() {
   const [filterDept, setFilterDept]     = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
 
-  const [showAddModal, setShowAddModal]   = useState(false)
-  const [formData, setFormData]           = useState<NewEmployeeForm>(EMPTY_FORM)
-  const [showPassword, setShowPassword]   = useState(false)
-  const [submitting, setSubmitting]       = useState(false)
-  const [formError, setFormError]         = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [formData, setFormData]         = useState<NewEmployeeForm>(EMPTY_FORM)
+  const [formErrors, setFormErrors]     = useState<FormErrors>({})
+  const [touched, setTouched]           = useState<TouchedFields>({})
+  const [showPassword, setShowPassword] = useState(false)
+  const [submitting, setSubmitting]     = useState(false)
+  const [submitError, setSubmitError]   = useState('')
 
-  const [editEmployee, setEditEmployee]   = useState<UserProfile | null>(null)
-  const [editForm, setEditForm]           = useState({ name: '', phoneNumber: '', department: '', designation: '' })
+  const [editEmployee, setEditEmployee]     = useState<UserProfile | null>(null)
+  const [editForm, setEditForm]             = useState({ name: '', phoneNumber: '', department: '', designation: '' })
   const [editSubmitting, setEditSubmitting] = useState(false)
-  const [editError, setEditError]         = useState('')
+  const [editError, setEditError]           = useState('')
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [logoutLoading, setLogoutLoading]         = useState(false)
-  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false)
+
   const [selectedEmployee, setSelectedEmployee]           = useState<{ uid: string; name: string } | null>(null)
+  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false)
   const [deactivateLoading, setDeactivateLoading]         = useState(false)
+  const [confirmActivateOpen, setConfirmActivateOpen]     = useState(false)
+  const [activateLoading, setActivateLoading]             = useState(false)
 
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
@@ -137,6 +229,27 @@ function EmployeeManagementContent() {
   }
   useEffect(() => { loadEmployees() }, [])
 
+  // ── Field change + blur handlers ──
+  const handleFieldChange = (field: keyof NewEmployeeForm, value: string) => {
+    setFormData(p => ({ ...p, [field]: value }))
+    if (touched[field]) {
+      setFormErrors(p => ({ ...p, [field]: validateField(field, value) }))
+    }
+  }
+
+  const handleBlur = (field: keyof NewEmployeeForm) => {
+    setTouched(p => ({ ...p, [field]: true }))
+    setFormErrors(p => ({ ...p, [field]: validateField(field, formData[field]) }))
+  }
+
+  const resetAddModal = () => {
+    setFormData(EMPTY_FORM)
+    setFormErrors({})
+    setTouched({})
+    setSubmitError('')
+    setShowPassword(false)
+  }
+
   const handleLogoutConfirmed = async () => {
     setLogoutLoading(true)
     try { await signOut(); router.push('/') }
@@ -144,22 +257,44 @@ function EmployeeManagementContent() {
   }
 
   const handleAddEmployee = async (e: React.FormEvent) => {
-    e.preventDefault(); setFormError(''); setSubmitting(true)
+    e.preventDefault()
+    setSubmitError('')
+
+    // Touch all fields and validate
+    const allTouched: TouchedFields = {}
+    ;(Object.keys(formData) as (keyof NewEmployeeForm)[]).forEach(k => { allTouched[k] = true })
+    setTouched(allTouched)
+
+    const errors = validateAll(formData)
+    setFormErrors(errors)
+    if (Object.keys(errors).length > 0) return
+
+    setSubmitting(true)
     try {
-      if (!formData.name || !formData.email || !formData.password) throw new Error('Name, email, and password are required')
-      if (formData.password.length < 6) throw new Error('Password must be at least 6 characters')
       const uc = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.password)
-      await createUser({ uid: uc.user.uid, email: formData.email, name: formData.name, role: 'employee', phoneNumber: formData.phoneNumber, department: formData.department, designation: formData.designation, createdAt: Timestamp.now(), lastLogin: Timestamp.now(), status: 'active' } as UserProfile)
+      await createUser({
+        uid: uc.user.uid, email: formData.email, name: formData.name, role: 'employee',
+        phoneNumber: formData.phoneNumber, department: formData.department,
+        designation: formData.designation, createdAt: Timestamp.now(),
+        lastLogin: Timestamp.now(), status: 'active',
+      } as UserProfile)
       toast.success(`${formData.name} added successfully!`)
-      setFormData(EMPTY_FORM); setShowAddModal(false); await loadEmployees()
+      resetAddModal()
+      setShowAddModal(false)
+      await loadEmployees()
     } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') setFormError('This email is already registered')
-      else if (err.code === 'auth/invalid-email') setFormError('Invalid email address')
-      else setFormError(err.message || 'Failed to create employee')
+      if (err.code === 'auth/email-already-in-use') setSubmitError('This email is already registered in the system.')
+      else if (err.code === 'auth/invalid-email') setSubmitError('The email address is not valid.')
+      else setSubmitError(err.message || 'Failed to create employee. Please try again.')
     } finally { setSubmitting(false) }
   }
 
-  const openEdit = (emp: UserProfile) => { setEditEmployee(emp); setEditForm({ name: emp.name, phoneNumber: emp.phoneNumber || '', department: emp.department || '', designation: emp.designation || '' }); setEditError('') }
+  const openEdit = (emp: UserProfile) => {
+    setEditEmployee(emp)
+    setEditForm({ name: emp.name, phoneNumber: emp.phoneNumber || '', department: emp.department || '', designation: emp.designation || '' })
+    setEditError('')
+  }
+
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault(); if (!editEmployee) return; setEditSubmitting(true); setEditError('')
     try { await updateUser(editEmployee.uid, editForm); setEditEmployee(null); await loadEmployees() }
@@ -168,8 +303,20 @@ function EmployeeManagementContent() {
 
   const confirmDeactivate = async () => {
     if (!selectedEmployee) return; setDeactivateLoading(true)
-    try { await deactivateUser(selectedEmployee.uid); await loadEmployees(); toast.success(`${selectedEmployee.name} deactivated`); setConfirmDeactivateOpen(false); setSelectedEmployee(null) }
-    catch { toast.error('Failed to deactivate') } finally { setDeactivateLoading(false) }
+    try {
+      await deactivateUser(selectedEmployee.uid); await loadEmployees()
+      toast.success(`${selectedEmployee.name} deactivated`)
+      setConfirmDeactivateOpen(false); setSelectedEmployee(null)
+    } catch { toast.error('Failed to deactivate') } finally { setDeactivateLoading(false) }
+  }
+
+  const confirmActivate = async () => {
+    if (!selectedEmployee) return; setActivateLoading(true)
+    try {
+      await activateUser(selectedEmployee.uid); await loadEmployees()
+      toast.success(`${selectedEmployee.name} activated`)
+      setConfirmActivateOpen(false); setSelectedEmployee(null)
+    } catch { toast.error('Failed to activate') } finally { setActivateLoading(false) }
   }
 
   const filtered = employees.filter(e => {
@@ -178,19 +325,35 @@ function EmployeeManagementContent() {
   })
 
   const navItems = [
-    { href: '/admin/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',      active: false },
-    { href: '/admin/employees', icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',      active: true  },
-    { href: '/admin/attendance',icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',     active: false },
-    { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: false },
-    { href: '/admin/settings',  icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',       active: false },
+    { href: '/admin/dashboard',  icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Dashboard',      active: false },
+    { href: '/admin/employees',  icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',      active: true  },
+    { href: '/admin/attendance', icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',     active: false },
+    // { href: '/admin/leaves',     icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: false },
+      { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status', active: false },
+    { href: '/admin/settings',   icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',       active: false },
   ]
+
+  // count valid fields for progress
+  const validCount = (Object.keys(formData) as (keyof NewEmployeeForm)[]).filter(k => touched[k] && !validateField(k, formData[k])).length
+  const totalFields = 6
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
-      {/* Modals */}
-      <ConfirmModal show={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={handleLogoutConfirmed} illustration={<SadPersonIllustration />} title="Comeback Soon!" subtitle="Are you sure you want to logout?" confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700" loading={logoutLoading} />
-      <ConfirmModal show={confirmDeactivateOpen} onClose={() => { setConfirmDeactivateOpen(false); setSelectedEmployee(null) }} onConfirm={confirmDeactivate} illustration={<div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center"><PersonOffRoundedIcon sx={{ fontSize: 36, color: '#dc2626' }} /></div>} title="Deactivate Employee?" subtitle={`${selectedEmployee?.name} will lose system access.`} confirmLabel="Yes, Deactivate" confirmClass="bg-red-600 hover:bg-red-700" loading={deactivateLoading} />
+      {/* ── Modals ── */}
+      <ConfirmModal show={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={handleLogoutConfirmed}
+        illustration={<SadPersonIllustration />} title="Comeback Soon!" subtitle="Are you sure you want to logout?"
+        confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700" loading={logoutLoading} />
+
+      <ConfirmModal show={confirmDeactivateOpen} onClose={() => { setConfirmDeactivateOpen(false); setSelectedEmployee(null) }} onConfirm={confirmDeactivate}
+        illustration={<div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center"><PersonOffRoundedIcon sx={{ fontSize: 36, color: '#dc2626' }} /></div>}
+        title="Deactivate Employee?" subtitle={`${selectedEmployee?.name} will lose system access.`}
+        confirmLabel="Yes, Deactivate" confirmClass="bg-red-600 hover:bg-red-700" loading={deactivateLoading} />
+
+      <ConfirmModal show={confirmActivateOpen} onClose={() => { setConfirmActivateOpen(false); setSelectedEmployee(null) }} onConfirm={confirmActivate}
+        illustration={<div className="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center"><HowToRegRoundedIcon sx={{ fontSize: 36, color: '#16a34a' }} /></div>}
+        title="Activate Employee?" subtitle={`${selectedEmployee?.name} will regain system access.`}
+        confirmLabel="Yes, Activate" confirmClass="bg-green-600 hover:bg-green-700" loading={activateLoading} />
 
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -246,7 +409,7 @@ function EmployeeManagementContent() {
             <h1 className="text-xl font-extrabold text-slate-900 leading-tight">Employee Management</h1>
             <p className="text-xs text-slate-400">Manage your team members</p>
           </div>
-          <button onClick={() => { setShowAddModal(true); setFormError(''); setFormData(EMPTY_FORM) }}
+          <button onClick={() => { resetAddModal(); setShowAddModal(true) }}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-all shadow-md shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0">
             <AddRoundedIcon sx={{ fontSize: 18 }} />Add Employee
           </button>
@@ -313,7 +476,7 @@ function EmployeeManagementContent() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
-                      {['Employee','Department','Designation','Contact','Status','Actions'].map(h => (
+                      {['Employee', 'Department', 'Designation', 'Contact', 'Status', 'Actions'].map(h => (
                         <th key={h} className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
@@ -351,9 +514,19 @@ function EmployeeManagementContent() {
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            <button onClick={() => openEdit(emp)} className="p-2 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors"><EditRoundedIcon sx={{ fontSize: 16 }} /></button>
-                            {emp.status === 'active' && (
-                              <button onClick={() => { setSelectedEmployee({ uid: emp.uid, name: emp.name }); setConfirmDeactivateOpen(true) }} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><PersonOffRoundedIcon sx={{ fontSize: 16 }} /></button>
+                            <button onClick={() => openEdit(emp)} className="p-2 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors" title="Edit">
+                              <EditRoundedIcon sx={{ fontSize: 16 }} />
+                            </button>
+                            {emp.status === 'active' ? (
+                              <button onClick={() => { setSelectedEmployee({ uid: emp.uid, name: emp.name }); setConfirmDeactivateOpen(true) }}
+                                className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Deactivate">
+                                <PersonOffRoundedIcon sx={{ fontSize: 16 }} />
+                              </button>
+                            ) : (
+                              <button onClick={() => { setSelectedEmployee({ uid: emp.uid, name: emp.name }); setConfirmActivateOpen(true) }}
+                                className="p-2 rounded-xl text-green-600 hover:bg-green-50 transition-colors" title="Activate">
+                                <HowToRegRoundedIcon sx={{ fontSize: 16 }} />
+                              </button>
                             )}
                           </div>
                         </td>
@@ -371,60 +544,147 @@ function EmployeeManagementContent() {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+
+            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <div>
                 <h2 className="text-xl font-extrabold text-slate-900">Add New Employee</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Creates Firebase Auth + Firestore profile</p>
+                <p className="text-xs text-slate-400 mt-0.5">All fields are required</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+              <button onClick={() => { setShowAddModal(false); resetAddModal() }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
                 <CloseRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} />
               </button>
             </div>
-            <form onSubmit={handleAddEmployee} className="p-6 space-y-4">
-              {formError && (
-                <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700">
-                  <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />{formError}
+
+            {/* Progress bar */}
+            <div className="px-6 pt-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-semibold text-slate-400">Form completion</p>
+                <p className="text-xs font-bold text-blue-600">{validCount}/{totalFields} fields valid</p>
+              </div>
+              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300"
+                  style={{ width: `${(validCount / totalFields) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <form onSubmit={handleAddEmployee} className="p-6 space-y-4" noValidate>
+
+              {/* Firebase-level submit error */}
+              {submitError && (
+                <div className="flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 rounded-2xl">
+                  <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} className="shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700 font-medium">{submitError}</p>
                 </div>
               )}
-              {[
-                { label: 'Full Name', name: 'name', type: 'text', placeholder: 'e.g. Priya Rajan', required: true },
-                { label: 'Email', name: 'email', type: 'email', placeholder: 'priya@company.com', required: true },
-                { label: 'Phone Number', name: 'phoneNumber', type: 'text', placeholder: '+91 9876543210', required: false },
-                { label: 'Designation', name: 'designation', type: 'text', placeholder: 'e.g. Software Engineer', required: false },
-              ].map(f => (
-                <div key={f.name} className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{f.label}{f.required && <span className="text-red-500 ml-1">*</span>}</label>
-                  <input type={f.type} placeholder={f.placeholder} value={(formData as any)[f.name]} onChange={e => setFormData(p => ({ ...p, [f.name]: e.target.value }))} required={f.required}
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
-                </div>
-              ))}
+
+              {/* Full Name */}
+              <FormField label="Full Name" required error={formErrors.name} touched={touched.name} success={!formErrors.name}>
+                <input
+                  type="text"
+                  placeholder="e.g. Priya Rajan"
+                  value={formData.name}
+                  onChange={e => handleFieldChange('name', e.target.value)}
+                  onBlur={() => handleBlur('name')}
+                  className={inputClass(formErrors.name, touched.name)}
+                />
+              </FormField>
+
+              {/* Email */}
+              <FormField label="Email Address" required error={formErrors.email} touched={touched.email} success={!formErrors.email}>
+                <input
+                  type="email"
+                  placeholder="priya@company.com"
+                  value={formData.email}
+                  onChange={e => handleFieldChange('email', e.target.value)}
+                  onBlur={() => handleBlur('email')}
+                  className={inputClass(formErrors.email, touched.email)}
+                />
+              </FormField>
+
               {/* Password */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Temporary Password <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters" value={formData.password} onChange={e => setFormData(p => ({ ...p, password: e.target.value }))} required
-                    className="w-full h-11 px-4 pr-11 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    {showPassword ? <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 18 }} />}
-                  </button>
-                </div>
-                <p className="text-xs text-slate-400">Password must be at least 6 characters</p>
-              </div>
+              <FormField label="Temporary Password" required error={formErrors.password} touched={touched.password} success={!formErrors.password}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Min. 6 chars, 1 uppercase, 1 number"
+                  value={formData.password}
+                  onChange={e => handleFieldChange('password', e.target.value)}
+                  onBlur={() => handleBlur('password')}
+                  className={`${inputClass(formErrors.password, touched.password)} pr-11`}
+                />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                  {showPassword ? <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 18 }} />}
+                </button>
+                {/* Password strength hints */}
+                {touched.password && formData.password && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      { label: '6+ chars', ok: formData.password.length >= 6 },
+                      { label: 'Uppercase', ok: /[A-Z]/.test(formData.password) },
+                      { label: 'Number',    ok: /[0-9]/.test(formData.password) },
+                    ].map(hint => (
+                      <span key={hint.label} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${hint.ok ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {hint.ok ? '✓' : '○'} {hint.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </FormField>
+
+              {/* Phone Number */}
+              <FormField label="Phone Number" required error={formErrors.phoneNumber} touched={touched.phoneNumber} success={!formErrors.phoneNumber}>
+                <input
+                  type="text"
+                  placeholder="+91 9876543210"
+                  value={formData.phoneNumber}
+                  onChange={e => handleFieldChange('phoneNumber', e.target.value)}
+                  onBlur={() => handleBlur('phoneNumber')}
+                  className={inputClass(formErrors.phoneNumber, touched.phoneNumber)}
+                />
+              </FormField>
+
+              {/* Designation */}
+              <FormField label="Designation" required error={formErrors.designation} touched={touched.designation} success={!formErrors.designation}>
+                <input
+                  type="text"
+                  placeholder="e.g. Software Engineer"
+                  value={formData.designation}
+                  onChange={e => handleFieldChange('designation', e.target.value)}
+                  onBlur={() => handleBlur('designation')}
+                  className={inputClass(formErrors.designation, touched.designation)}
+                />
+              </FormField>
+
               {/* Department */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">Department</label>
-                <select value={formData.department} onChange={e => setFormData(p => ({ ...p, department: e.target.value }))}
-                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 transition-all appearance-none">
-                  <option value="">Select department</option>
+              <FormField label="Department" required error={formErrors.department} touched={touched.department} success={!formErrors.department}>
+                <select
+                  value={formData.department}
+                  onChange={e => handleFieldChange('department', e.target.value)}
+                  onBlur={() => handleBlur('department')}
+                  className={`${inputClass(formErrors.department, touched.department)} appearance-none`}
+                >
+                  <option value="">Select a department</option>
                   {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
-              </div>
+              </FormField>
+
+              {/* Actions */}
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={submitting} className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                  {submitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Creating…</> : <><AddRoundedIcon sx={{ fontSize: 18 }} />Add Employee</>}
+                <button type="submit" disabled={submitting}
+                  className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed shadow-md shadow-blue-200">
+                  {submitting
+                    ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Creating…</>
+                    : <><AddRoundedIcon sx={{ fontSize: 18 }} />Add Employee</>}
                 </button>
-                <button type="button" onClick={() => setShowAddModal(false)} className="h-11 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="button" onClick={() => { setShowAddModal(false); resetAddModal() }}
+                  className="h-11 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                  Cancel
+                </button>
               </div>
+
             </form>
           </div>
         </div>
@@ -436,14 +696,20 @@ function EmployeeManagementContent() {
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <h2 className="text-xl font-extrabold text-slate-900">Edit Employee</h2>
-              <button onClick={() => setEditEmployee(null)} className="p-2 hover:bg-slate-100 rounded-xl"><CloseRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} /></button>
+              <button onClick={() => setEditEmployee(null)} className="p-2 hover:bg-slate-100 rounded-xl">
+                <CloseRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} />
+              </button>
             </div>
             <form onSubmit={handleEditSave} className="p-6 space-y-4">
-              {editError && <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700"><ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />{editError}</div>}
+              {editError && (
+                <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700">
+                  <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />{editError}
+                </div>
+              )}
               {[
-                { label: 'Full Name', key: 'name', placeholder: 'Full name' },
+                { label: 'Full Name',    key: 'name',        placeholder: 'Full name' },
                 { label: 'Phone Number', key: 'phoneNumber', placeholder: '+91 9876543210' },
-                { label: 'Designation', key: 'designation', placeholder: 'Software Engineer' },
+                { label: 'Designation',  key: 'designation', placeholder: 'Software Engineer' },
               ].map(f => (
                 <div key={f.key} className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{f.label}</label>
@@ -460,15 +726,22 @@ function EmployeeManagementContent() {
                 </select>
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={editSubmitting} className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                  {editSubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</> : 'Save Changes'}
+                <button type="submit" disabled={editSubmitting}
+                  className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                  {editSubmitting
+                    ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</>
+                    : 'Save Changes'}
                 </button>
-                <button type="button" onClick={() => setEditEmployee(null)} className="h-11 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="button" onClick={() => setEditEmployee(null)}
+                  className="h-11 px-6 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors">
+                  Cancel
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   )
 }

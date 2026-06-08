@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { ProtectedRoute } from '@/lib/protected-route'
 import { getLeaveRequestsByUser, createLeaveRequest, LeaveRequest } from '@/lib/firestore-service'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Timestamp } from 'firebase/firestore'
 import Link from 'next/link'
 
@@ -20,6 +20,7 @@ import ErrorRoundedIcon              from '@mui/icons-material/ErrorRounded'
 import FingerprintRoundedIcon        from '@mui/icons-material/FingerprintRounded'
 import AddCircleOutlineRoundedIcon   from '@mui/icons-material/AddCircleOutlineRounded'
 import CalendarMonthRoundedIcon      from '@mui/icons-material/CalendarMonthRounded'
+import AssignmentRoundedIcon         from '@mui/icons-material/AssignmentRounded'
 import BeachAccessRoundedIcon        from '@mui/icons-material/BeachAccessRounded'
 import AccessTimeRoundedIcon         from '@mui/icons-material/AccessTimeRounded'
 import CancelRoundedIcon             from '@mui/icons-material/CancelRounded'
@@ -69,8 +70,12 @@ function ConfirmModal({
         <h2 className="text-xl font-bold text-slate-900 mt-2 mb-1">{title}</h2>
         <p className="text-sm text-slate-500 mb-6">{subtitle}</p>
         <div className="flex gap-3">
-          <button onClick={onClose} disabled={loading} className="flex-1 h-11 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
-          <button onClick={onConfirm} disabled={loading} className={`flex-1 h-11 rounded-xl text-white font-semibold transition-colors ${confirmClass}`}>
+          <button onClick={onClose} disabled={loading}
+            className="flex-1 h-11 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className={`flex-1 h-11 rounded-xl text-white font-semibold transition-colors ${confirmClass}`}>
             {loading ? 'Please wait…' : confirmLabel}
           </button>
         </div>
@@ -79,7 +84,7 @@ function ConfirmModal({
   )
 }
 
-// ── Leave Type Badge ──────────────────────────────────────────────────────────
+// ── Leave Type Colors ─────────────────────────────────────────────────────────
 const leaveTypeColors: Record<string, { bg: string; text: string }> = {
   casual:   { bg: 'bg-blue-100',   text: 'text-blue-700'   },
   sick:     { bg: 'bg-rose-100',   text: 'text-rose-700'   },
@@ -87,21 +92,23 @@ const leaveTypeColors: Record<string, { bg: string; text: string }> = {
   personal: { bg: 'bg-amber-100',  text: 'text-amber-700'  },
 }
 const statusColors: Record<string, { bg: string; text: string }> = {
-  pending:  { bg: 'bg-amber-100',  text: 'text-amber-700'  },
-  approved: { bg: 'bg-green-100',  text: 'text-green-700'  },
-  rejected: { bg: 'bg-red-100',    text: 'text-red-700'    },
+  pending:  { bg: 'bg-amber-100', text: 'text-amber-700' },
+  approved: { bg: 'bg-green-100', text: 'text-green-700' },
+  rejected: { bg: 'bg-red-100',   text: 'text-red-700'   },
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 function EmployeeLeavesContent() {
-  const [sidebarOpen, setSidebarOpen]   = useState(true)
-  const [leaves, setLeaves]             = useState<LeaveRequest[]>([])
-  const [showForm, setShowForm]         = useState(false)
-  const [loading, setLoading]           = useState(false)
-  const [error, setError]               = useState('')
-  const [success, setSuccess]           = useState('')
+  const pathname = usePathname()
+
+  const [sidebarOpen,       setSidebarOpen]       = useState(true)
+  const [leaves,            setLeaves]            = useState<LeaveRequest[]>([])
+  const [showForm,          setShowForm]          = useState(false)
+  const [loading,           setLoading]           = useState(false)
+  const [error,             setError]             = useState('')
+  const [success,           setSuccess]           = useState('')
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
-  const [logoutLoading, setLogoutLoading]         = useState(false)
+  const [logoutLoading,     setLogoutLoading]     = useState(false)
   const [formData, setFormData] = useState({
     leaveType: 'casual' as 'casual' | 'sick' | 'vacation' | 'personal',
     startDate: '',
@@ -144,17 +151,18 @@ function EmployeeLeavesContent() {
     e.preventDefault(); setLoading(true); setError(''); setSuccess('')
     try {
       if (!userProfile) throw new Error('User not found')
-      if (!formData.startDate || !formData.endDate || !formData.reason) throw new Error('Please fill all required fields')
+      if (!formData.startDate || !formData.endDate || !formData.reason)
+        throw new Error('Please fill all required fields')
       const days = calculateDays()
       if (days < 1) throw new Error('End date must be after start date')
       await createLeaveRequest({
         uid: userProfile.uid,
         employeeName: userProfile.name,
         startDate: Timestamp.fromDate(new Date(formData.startDate)),
-        endDate: Timestamp.fromDate(new Date(formData.endDate)),
+        endDate:   Timestamp.fromDate(new Date(formData.endDate)),
         leaveType: formData.leaveType,
-        reason: formData.reason,
-        status: 'pending',
+        reason:    formData.reason,
+        status:    'pending',
         createdAt: Timestamp.now(),
         days,
       })
@@ -168,26 +176,32 @@ function EmployeeLeavesContent() {
     finally { setLoading(false) }
   }
 
+  // ── Nav items ─────────────────────────────────────────────────────────────────
   const navItems = [
-    { href: '/employee/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: false },
-    { href: '/employee/profile',   icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,    label: 'My Profile',     active: false },
-    { href: '/employee/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests', active: true  },
+    { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
+    { href: '/employee/MyProfile',          icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,        label: 'My Profile'       },
+    // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
+    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
+    { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
   ]
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
-      {/* Modals */}
+      {/* Modal */}
       <ConfirmModal
-        show={showLogoutConfirm}  onClose={() => setShowLogoutConfirm(false)}
+        show={showLogoutConfirm}   onClose={() => setShowLogoutConfirm(false)}
         onConfirm={handleLogoutConfirmed} illustration={<SadPersonIllustration />}
-        title="Comeback Soon!"    subtitle="Are you sure you want to logout?"
+        title="Comeback Soon!"     subtitle="Are you sure you want to logout?"
         confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700"
         loading={logoutLoading}
       />
 
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+
+        {/* Logo */}
         <div className="px-5 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-md shadow-blue-200">
@@ -200,19 +214,29 @@ function EmployeeLeavesContent() {
           </div>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 px-3 py-5 space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <button className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 text-left ${item.active ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-                <span className={item.active ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
+          {navItems.map(item => {
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full
+                  ${isActive
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+              >
+                <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
                 {item.label}
-                {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
-              </button>
-            </Link>
-          ))}
+                {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
+              </Link>
+            )
+          })}
         </nav>
 
+        {/* User + Logout */}
         <div className="px-3 py-4 border-t border-slate-100 space-y-3">
           <div className="px-3 py-3 bg-slate-50 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
@@ -227,36 +251,43 @@ function EmployeeLeavesContent() {
             onClick={() => setShowLogoutConfirm(true)}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
           >
-            <LogoutRoundedIcon sx={{ fontSize: 18 }} />
-            Sign Out
+            <LogoutRoundedIcon sx={{ fontSize: 18 }} />Sign Out
           </button>
         </div>
       </aside>
 
-      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
+        {/* Topbar */}
         <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-4 sticky top-0 z-20">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+          >
             {sidebarOpen ? <CloseRoundedIcon /> : <MenuRoundedIcon />}
           </button>
           <div className="flex-1">
             <h1 className="text-xl font-extrabold text-slate-900 leading-tight">Leave Requests</h1>
-            <p className="text-xs text-slate-400">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p className="text-xs text-slate-400">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
           </div>
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-all shadow-md shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0"
             >
-              <AddCircleOutlineRoundedIcon sx={{ fontSize: 18 }} />
-              New Request
+              <AddCircleOutlineRoundedIcon sx={{ fontSize: 18 }} />New Request
             </button>
           )}
         </header>
 
+        {/* Content */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {error && (
@@ -279,7 +310,10 @@ function EmployeeLeavesContent() {
                   <h2 className="text-xl font-extrabold">New Leave Request</h2>
                   <p className="text-blue-200 text-sm mt-0.5">Fill in the details below</p>
                 </div>
-                <button onClick={() => setShowForm(false)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                <button
+                  onClick={() => setShowForm(false)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+                >
                   <CancelRoundedIcon sx={{ fontSize: 20 }} />
                 </button>
               </div>
@@ -290,8 +324,8 @@ function EmployeeLeavesContent() {
                     <label className="text-xs font-bold uppercase tracking-wider text-blue-200">Leave Type</label>
                     <select name="leaveType" value={formData.leaveType} onChange={handleInputChange}
                       className="w-full h-11 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium backdrop-blur-sm focus:outline-none focus:border-white/50 focus:bg-white/20 transition-all">
-                      <option value="casual" className="text-slate-800">Casual Leave</option>
-                      <option value="sick" className="text-slate-800">Sick Leave</option>
+                      <option value="casual"   className="text-slate-800">Casual Leave</option>
+                      <option value="sick"     className="text-slate-800">Sick Leave</option>
                       <option value="vacation" className="text-slate-800">Vacation</option>
                       <option value="personal" className="text-slate-800">Personal Leave</option>
                     </select>
@@ -345,8 +379,8 @@ function EmployeeLeavesContent() {
 
             <div className="space-y-3">
               {leaves.length > 0 ? leaves.map((leave, i) => {
-                const typeStyle   = leaveTypeColors[leave.leaveType]   || { bg: 'bg-slate-100', text: 'text-slate-700' }
-                const statusStyle = statusColors[leave.status] || { bg: 'bg-slate-100', text: 'text-slate-700' }
+                const typeStyle   = leaveTypeColors[leave.leaveType] || { bg: 'bg-slate-100', text: 'text-slate-700' }
+                const statusStyle = statusColors[leave.status]       || { bg: 'bg-slate-100', text: 'text-slate-700' }
                 return (
                   <div key={i} className="p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-colors">
                     <div className="flex items-start justify-between gap-3">

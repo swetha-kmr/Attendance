@@ -16,6 +16,7 @@ import SettingsRoundedIcon       from '@mui/icons-material/SettingsRounded'
 import LogoutRoundedIcon         from '@mui/icons-material/LogoutRounded'
 import MenuRoundedIcon           from '@mui/icons-material/MenuRounded'
 import CloseRoundedIcon          from '@mui/icons-material/CloseRounded'
+import AssignmentRoundedIcon    from '@mui/icons-material/AssignmentRounded'
 import FingerprintRoundedIcon    from '@mui/icons-material/FingerprintRounded'
 import SearchRoundedIcon         from '@mui/icons-material/SearchRounded'
 import CheckCircleRoundedIcon    from '@mui/icons-material/CheckCircleRounded'
@@ -135,7 +136,8 @@ function AdminLeavesContent() {
     { href: '/admin/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',      active: false },
     { href: '/admin/employees', icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',      active: false },
     { href: '/admin/attendance',icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',     active: false },
-    { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: true  },
+    // { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: true  },
+    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status', active: false },
     { href: '/admin/settings',  icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',       active: false },
   ]
 

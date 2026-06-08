@@ -3,14 +3,16 @@
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { ProtectedRoute } from '@/lib/protected-route'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 
 // ── MUI Icons ──────────────────────────────────────────────────────────────────
 import DashboardRoundedIcon       from '@mui/icons-material/DashboardRounded'
 import PersonRoundedIcon          from '@mui/icons-material/PersonRounded'
 import EventNoteRoundedIcon       from '@mui/icons-material/EventNoteRounded'
+import CalendarMonthRoundedIcon   from '@mui/icons-material/CalendarMonthRounded'
 import LogoutRoundedIcon          from '@mui/icons-material/LogoutRounded'
+import AssignmentRoundedIcon      from '@mui/icons-material/AssignmentRounded'
 import MenuRoundedIcon            from '@mui/icons-material/MenuRounded'
 import CloseRoundedIcon           from '@mui/icons-material/CloseRounded'
 import CheckCircleRoundedIcon     from '@mui/icons-material/CheckCircleRounded'
@@ -83,7 +85,12 @@ function ConfirmModal({
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
+
 function EmployeeProfileContent() {
+  
+   const pathname = usePathname()
+    console.log("Current Path:", pathname)
+
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [formData, setFormData] = useState({ name: '', phoneNumber: '', department: '', designation: '' })
   const [loading, setLoading] = useState(false)
@@ -122,12 +129,14 @@ function EmployeeProfileContent() {
     finally { setLoading(false) }
   }
 
-  const navItems = [
-    { href: '/employee/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: false },
-    { href: '/employee/profile',   icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,    label: 'My Profile',     active: true  },
-    { href: '/employee/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests', active: false },
-  ]
 
+  const navItems = [
+  { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
+  { href: '/employee/MyProfile',        icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,        label: 'My Profile'       },
+  // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
+  { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
+  { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
+]
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
@@ -155,19 +164,29 @@ function EmployeeProfileContent() {
           </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-5 space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <button className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 text-left ${item.active ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-                <span className={item.active ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
-                {item.label}
-                {item.active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
-              </button>
-            </Link>
-          ))}
-        </nav>
+<nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+  {navItems.map((item) => {
+    const isActive = pathname === item.href
+    console.log("pathname =", pathname)
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
+          isActive
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+        }`}
+      >
+        <span className={isActive ? 'text-white' : 'text-slate-400'}>
+          {item.icon}
+        </span>
+        {item.label}
+      </Link>
+    )
+  })}
+</nav>
 
         {/* User info + logout */}
         <div className="px-3 py-4 border-t border-slate-100 space-y-3">
@@ -349,6 +368,7 @@ export default function EmployeeProfilePage() {
   return (
     <ProtectedRoute requiredRole="employee">
       <EmployeeProfileContent />
+    
     </ProtectedRoute>
   )
 }
