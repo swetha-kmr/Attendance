@@ -6,6 +6,7 @@ import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { db, auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { Toaster, toast } from 'react-hot-toast' // <-- Added Toast Notification
 
 import FingerprintRoundedIcon   from '@mui/icons-material/FingerprintRounded'
 import EmailRoundedIcon         from '@mui/icons-material/EmailRounded'
@@ -13,7 +14,6 @@ import LockRoundedIcon          from '@mui/icons-material/LockRounded'
 import VisibilityRoundedIcon    from '@mui/icons-material/VisibilityRounded'
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
 import ErrorRoundedIcon         from '@mui/icons-material/ErrorRounded'
-import BlockRoundedIcon         from '@mui/icons-material/BlockRounded'
 import SecurityRoundedIcon      from '@mui/icons-material/SecurityRounded'
 import PersonOffRoundedIcon     from '@mui/icons-material/PersonOffRounded'
 
@@ -24,24 +24,41 @@ export default function LoginPage() {
   const [loading, setLoading]           = useState(false)
   const [rememberMe, setRememberMe]     = useState(false)
   const [error, setError]               = useState('')
-  const [isDeactivated, setIsDeactivated] = useState(false)
   const [isNotFound, setIsNotFound]     = useState(false)
 
   const router = useRouter()
   const { userProfile } = useAuth()
 
- 
-useEffect(() => {
-  if (!userProfile) return
-  if (userProfile.status === 'inactive') return  // ← add this line
-  if (userProfile.role === 'admin') router.push('/admin/dashboard')
-  else router.push('/employee/dashboard')
-}, [userProfile, router])
+  useEffect(() => {
+    if (!userProfile) return
+    if (userProfile.status === 'inactive') return
+    if (userProfile.role === 'admin') router.push('/admin/dashboard')
+    else router.push('/employee/dashboard')
+  }, [userProfile, router])
 
   const clearErrors = () => {
     setError('')
-    setIsDeactivated(false)
     setIsNotFound(false)
+  }
+
+  // Trigger notification on Forgot Password click
+  const handleForgotPasswordClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    clearErrors()
+    
+    toast.error('Please contact your administrator to reset your password.', {
+      duration: 5000,
+      position: 'top-center',
+      style: {
+        background: '#fef2f2', // red-50
+        color: '#b91c1c',      // red-700
+        border: '1px solid #fee2e2',
+        fontSize: '14px',
+        fontWeight: '600',
+        borderRadius: '12px',
+        padding: '12px 16px',
+      },
+    })
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -51,7 +68,6 @@ useEffect(() => {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
-
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid))
 
       if (!userDoc.exists()) {
@@ -65,19 +81,17 @@ useEffect(() => {
 
       if (userData?.status === 'inactive') {
         await signOut(auth)
-        setIsDeactivated(true)
+        toast.error('Your account is deactivated. Please contact your administrator.')
         setLoading(false)
         return
       }
 
-      // Update last login
       try {
         await updateDoc(doc(db, 'users', userCredential.user.uid), {
           lastLogin: serverTimestamp(),
         })
       } catch (_) {}
 
-      // Auth context useEffect will handle redirect
     } catch (err: any) {
       setLoading(false)
       switch (err.code) {
@@ -101,6 +115,9 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 font-sans">
+      
+      {/* Container for the notification system */}
+      <Toaster />
 
       <div className="w-full max-w-md">
 
@@ -115,19 +132,6 @@ useEffect(() => {
 
         {/* ── Card ── */}
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-
-          {/* Deactivated banner */} 
-          {isDeactivated && (
-            <div className="flex items-start gap-3 px-6 py-4 bg-red-50 border-b border-red-100">
-              <BlockRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} className="shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-extrabold text-red-700">Please contact your administrator</p>
-                {/* <p className="text-xs text-red-600 mt-0.5 leading-relaxed">
-                  Your account has been deactivated. Please contact your administrator.
-                </p> */}
-              </div>
-            </div>
-          )}
 
           {/* Not found banner */}
           {isNotFound && (
@@ -144,7 +148,7 @@ useEffect(() => {
 
           <div className="p-8 space-y-5">
 
-            {/* General error (network, rate-limit, invalid email) */}
+            {/* General error */}
             {error && (
               <div className="flex items-start gap-3 p-3.5 bg-red-50 border border-red-100 rounded-2xl">
                 <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} className="shrink-0 mt-0.5" />
@@ -204,7 +208,7 @@ useEffect(() => {
                 </div>
               </div>
 
-              {/* Remember me */}
+              {/* Remember me & Forgot Password Link Trigger */}
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input
@@ -215,9 +219,14 @@ useEffect(() => {
                   />
                   <span className="text-sm text-slate-500 font-medium">Remember me</span>
                 </label>
-                <a href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-semibold transition-colors">
+                
+                <button 
+                  type="button"
+                  onClick={handleForgotPasswordClick} 
+                  className="text-sm text-blue-600 hover:text-blue-700 font-semibold transition-colors focus:outline-none"
+                >
                   Forgot password?
-                </a>
+                </button>
               </div>
 
               {/* Submit */}

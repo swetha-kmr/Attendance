@@ -198,8 +198,7 @@ function HolidayCalendarContent() {
   // ── Sidebar nav ─────────────────────────────────────────────────────────────
   const navItems = [
   { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
-  { href: '/employee/MyProfile',        icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,        label: 'My Profile'       },
-  // { href: '/employee/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
+{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },  // { href: '/employee/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
   { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
   { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
 ]
@@ -258,13 +257,18 @@ function HolidayCalendarContent() {
         {/* Nav */}
         <nav className="flex-1 px-3 py-5 space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
-          {navItems.map(item => {
-  const isActive = pathname === item.href
+          {navItems.map((item) => {
+  const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
   return (
-    <Link key={item.href} href={item.href}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full
-        ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
-                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+    <Link
+      key={item.href}
+      href={item.href}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
+        isActive
+          ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
       <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
       {item.label}
       {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}

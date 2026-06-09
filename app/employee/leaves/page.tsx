@@ -179,8 +179,7 @@ function EmployeeLeavesContent() {
   // ── Nav items ─────────────────────────────────────────────────────────────────
   const navItems = [
     { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
-    { href: '/employee/MyProfile',          icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,        label: 'My Profile'       },
-    // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
+{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },    // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
     { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
     { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
   ]
@@ -218,7 +217,7 @@ function EmployeeLeavesContent() {
         <nav className="flex-1 px-3 py-5 space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
           {navItems.map(item => {
-            const isActive = pathname === item.href
+            const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
             return (
               <Link
                 key={item.href}

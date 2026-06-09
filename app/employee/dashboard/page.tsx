@@ -572,11 +572,10 @@ function EmployeeDashboardContent() {
     return days.slice(0, 10)
   }, [attendance, holidays, leaves])
 
-  const navItems = [
-    { href: '/employee/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />, label: 'Dashboard' },
-    { href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },
-    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
-    { href: '/employee/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status' },
+ const navItems = [
+    { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Dashboard'        },
+{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
+    { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
   ]
 
   return (
@@ -636,24 +635,24 @@ function EmployeeDashboardContent() {
 
         <nav className="flex-1 px-3 py-5 space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
-          {navItems.map(item => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
-                {item.label}
-                {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
-              </Link>
-            )
-          })}
+          {navItems.map((item) => {
+  const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
+  return (
+    <Link
+      key={item.href}
+      href={item.href}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
+        isActive
+          ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
+      <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
+      {item.label}
+      {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
+    </Link>
+  )
+})}
         </nav>
 
         <div className="px-3 py-4 border-t border-slate-100 space-y-3">
@@ -736,7 +735,7 @@ function EmployeeDashboardContent() {
             </div>
           )}
 
-          {hasCheckedIn && !hasCheckedOut && !hasDailyStatus && (
+          {/* {hasCheckedIn && !hasCheckedOut && !hasDailyStatus && (
             <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
               <AssignmentRoundedIcon sx={{ fontSize: 18, color: '#d97706', flexShrink: 0, mt: '1px' }} />
               <div className="flex-1 min-w-0">
@@ -751,7 +750,7 @@ function EmployeeDashboardContent() {
                 </button>
               </Link>
             </div>
-          )}
+          )} */}
 
           <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 rounded-3xl p-6 text-white shadow-xl shadow-blue-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/5" />
@@ -1042,18 +1041,18 @@ function EmployeeDashboardContent() {
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
             <h2 className="text-base font-extrabold text-slate-900 mb-4">Quick Actions</h2>
             <div className="flex flex-wrap gap-3">
-              <Link href="/employee/leaves">
+              {/* <Link href="/employee/leaves">
                 <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-all shadow-md shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0">
                   <AddCircleOutlineRoundedIcon sx={{ fontSize: 18 }} />
                   Request Leave
                 </button>
-              </Link>
-              <Link href="/employee/profile">
+              </Link> */}
+              {/* <Link href="/employee/profile">
                 <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition-all hover:-translate-y-0.5 active:translate-y-0">
                   <ManageAccountsRoundedIcon sx={{ fontSize: 18 }} />
                   Update Profile
                 </button>
-              </Link>
+              </Link> */}
               <Link href="/employee/holiday-calendar">
                 <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm font-semibold transition-all hover:-translate-y-0.5 active:translate-y-0 border border-emerald-200">
                   <CalendarMonthRoundedIcon sx={{ fontSize: 18 }} />
