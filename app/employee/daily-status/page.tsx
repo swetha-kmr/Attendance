@@ -221,13 +221,13 @@ function HRBlockedScreen() {
           Daily Status is not applicable for the <strong className="text-slate-700">HR department</strong>.
           This section is only available to employees.
         </p>
-        <div className="mt-5 p-4 bg-amber-50 border border-amber-100 rounded-2xl text-left">
-          {/* <p className="text-xs font-bold text-amber-800 mb-2">Why is this hidden?</p> */}
-          {/* <p className="text-xs text-amber-700 leading-relaxed">
+        {/* <div className="mt-5 p-4 bg-amber-50 border border-amber-100 rounded-2xl text-left">
+          <p className="text-xs font-bold text-amber-800 mb-2">Why is this hidden?</p>
+          <p className="text-xs text-amber-700 leading-relaxed">
             HR employees are excluded from the daily status workflow as configured by your administrator.
             Please contact your admin if you think this is a mistake.
-          </p> */}
-        </div>
+          </p>
+        </div> */}
       </div>
     </div>
   )
