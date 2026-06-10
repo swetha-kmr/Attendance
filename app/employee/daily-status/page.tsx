@@ -33,6 +33,7 @@ import InfoOutlinedIcon         from '@mui/icons-material/InfoOutlined'
 import LockRoundedIcon          from '@mui/icons-material/LockRounded'
 import PersonRoundedIcon        from '@mui/icons-material/PersonRounded'
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded'
+import DoNotDisturbRoundedIcon  from '@mui/icons-material/DoNotDisturbRounded'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface DailyStatusReport {
@@ -49,8 +50,6 @@ export interface DailyStatusReport {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-// ✅ IST-safe local date string — avoids UTC drift from toISOString()
 function toLocalDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -206,6 +205,34 @@ function LogoutBlockModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── HR Blocked Screen ─────────────────────────────────────────────────────────
+// Shown when the logged-in employee belongs to the HR department
+function HRBlockedScreen() {
+  return (
+    <div className="flex-1 flex items-center justify-center p-8">
+      <div className="text-center max-w-sm">
+        <div className="w-20 h-20 mx-auto rounded-2xl bg-amber-100 flex items-center justify-center mb-5">
+          <DoNotDisturbRoundedIcon sx={{ fontSize: 40, color: '#d97706' }} />
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-900 mb-2">
+          Not Available for HR
+        </h2>
+        <p className="text-sm text-slate-500 leading-relaxed">
+          Daily Status is not applicable for the <strong className="text-slate-700">HR department</strong>.
+          This section is only available to employees.
+        </p>
+        <div className="mt-5 p-4 bg-amber-50 border border-amber-100 rounded-2xl text-left">
+          {/* <p className="text-xs font-bold text-amber-800 mb-2">Why is this hidden?</p> */}
+          {/* <p className="text-xs text-amber-700 leading-relaxed">
+            HR employees are excluded from the daily status workflow as configured by your administrator.
+            Please contact your admin if you think this is a mistake.
+          </p> */}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 function DailyStatusContent() {
   const { userProfile, signOut } = useAuth()
@@ -230,14 +257,18 @@ function DailyStatusContent() {
   const [todaySubmitted,  setTodaySubmitted]  = useState(false)
   const [showLogoutBlock, setShowLogoutBlock] = useState(false)
 
+  // ── Check if this user is HR ──────────────────────────────────────────────
+  const isHREmployee =
+    userProfile?.department === 'HR' || userProfile?.showDailyStatus === false
+
   const isToday   = date === today
   const hasReport = !!existingId
   const canEdit   = !hasReport || isEditing
   const overLimit = wordCount(workSummary) > MAX_WORDS
 
-  // Load report for selected date
+  // Load report for selected date — skip if HR
   useEffect(() => {
-    if (!userProfile?.uid) return
+    if (!userProfile?.uid || isHREmployee) return
     setLoading(true)
     setExistingId(undefined)
     setTaskTitle(''); setWorkSummary(''); setTomorrowPlan(''); setBlockers('')
@@ -255,18 +286,18 @@ function DailyStatusContent() {
       }
       setLoading(false)
     })
-  }, [userProfile?.uid, date])
+  }, [userProfile?.uid, date, isHREmployee])
 
-  // Load recent reports (refresh after save)
+  // Load recent reports — skip if HR
   useEffect(() => {
-    if (!userProfile?.uid) return
+    if (!userProfile?.uid || isHREmployee) return
     fetchRecentReports(userProfile.uid).then(r => {
       setRecentReports(r)
       setLoadingRecent(false)
     })
-  }, [userProfile?.uid, saveMsg])
+  }, [userProfile?.uid, saveMsg, isHREmployee])
 
-  // ── Handlers ──────────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!userProfile?.uid) return
     if (!taskTitle.trim())   { setSaveErrMsg('Task title is required.');          setTimeout(() => setSaveErrMsg(''), 4000); return }
@@ -276,13 +307,13 @@ function DailyStatusContent() {
     setSaving(true)
     const result = await saveReport(
       {
-        userId:      userProfile.uid,
-        userName:    userProfile.name,
-        date:        Timestamp.fromDate(new Date(date + 'T' + new Date().toTimeString().slice(0, 8))),
-        taskTitle:   taskTitle.trim(),
-        workSummary: workSummary.trim(),
+        userId:       userProfile.uid,
+        userName:     userProfile.name,
+        date:         Timestamp.fromDate(new Date(date + 'T' + new Date().toTimeString().slice(0, 8))),
+        taskTitle:    taskTitle.trim(),
+        workSummary:  workSummary.trim(),
         tomorrowPlan: tomorrowPlan.trim(),
-        blockers:    blockers.trim(),
+        blockers:     blockers.trim(),
       },
       existingId,
     )
@@ -309,20 +340,25 @@ function DailyStatusContent() {
   }
 
   const handleLogout = async () => {
-    if (!todaySubmitted) { setDate(today); setShowLogoutBlock(true); return }
+    // HR employees can logout freely — no daily status required
+    if (!isHREmployee && !todaySubmitted) {
+      setDate(today)
+      setShowLogoutBlock(true)
+      return
+    }
     await signOut()
     router.push('/')
   }
 
-  // ── Nav items ─────────────────────────────────────────────────────────────────
+  // ── Nav items ─────────────────────────────────────────────────────────────
   const navItems = [
-    { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,        label: 'Dashboard'        },
-{ href: '/employee/MyProfile/', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },    // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,         label: 'Leave Requests'   },
-    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Holiday Calendar' },
-    { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,        label: 'Daily Status'     },
+    { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Dashboard'        },
+    { href: '/employee/MyProfile/',       icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,           label: 'My Profile'       },
+    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Holiday Calendar' },
+    { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Daily Status'     },
   ]
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
@@ -348,51 +384,52 @@ function DailyStatusContent() {
         <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
           {navItems.map((item) => {
-  const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
-  return (
-    <Link
-      key={item.href}
-      href={item.href}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
-        isActive
-          ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-      }`}
-    >
-      <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
-      {item.label}
-      {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
-    </Link>
-  )
-})}
+            const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
+                {item.label}
+                {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
+              </Link>
+            )
+          })}
 
-          {/* Recent Reports */}
-          <div className="pt-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-2 flex items-center gap-1.5">
-              <HistoryRoundedIcon sx={{ fontSize: 12 }} />Recent Reports
-            </p>
-            {loadingRecent ? (
-              <div className="flex justify-center py-3">
-                <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : recentReports.length === 0 ? (
-              <p className="text-[11px] text-slate-400 px-3 font-medium">No reports yet</p>
-            ) : (
-              <div className="space-y-1.5 px-1">
-                {recentReports.map(r => (
-                  <RecentReportCard
-                    key={r.id}
-                    report={r}
-                    onClick={() => {
-                      // ✅ IST-safe: use local date instead of toISOString() which drifts in UTC+5:30
-                      const d = r.date.toDate()
-                      setDate(toLocalDateStr(d))
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Recent Reports — hidden for HR */}
+          {!isHREmployee && (
+            <div className="pt-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-2 flex items-center gap-1.5">
+                <HistoryRoundedIcon sx={{ fontSize: 12 }} />Recent Reports
+              </p>
+              {loadingRecent ? (
+                <div className="flex justify-center py-3">
+                  <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : recentReports.length === 0 ? (
+                <p className="text-[11px] text-slate-400 px-3 font-medium">No reports yet</p>
+              ) : (
+                <div className="space-y-1.5 px-1">
+                  {recentReports.map(r => (
+                    <RecentReportCard
+                      key={r.id}
+                      report={r}
+                      onClick={() => {
+                        const d = r.date.toDate()
+                        setDate(toLocalDateStr(d))
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* User + Logout */}
@@ -409,14 +446,16 @@ function DailyStatusContent() {
           <button
             onClick={handleLogout}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors shadow-sm ${
-              todaySubmitted ? 'bg-rose-500 hover:bg-rose-600' : 'bg-slate-400 hover:bg-amber-500'
+              isHREmployee || todaySubmitted
+                ? 'bg-rose-500 hover:bg-rose-600'
+                : 'bg-slate-400 hover:bg-amber-500'
             }`}
-            title={!todaySubmitted ? "Submit today's daily status to unlock logout" : ''}
+            title={!isHREmployee && !todaySubmitted ? "Submit today's daily status to unlock logout" : ''}
           >
-            {todaySubmitted
+            {isHREmployee || todaySubmitted
               ? <LogoutRoundedIcon sx={{ fontSize: 18 }} />
               : <LockRoundedIcon sx={{ fontSize: 18 }} />}
-            {todaySubmitted ? 'Sign Out' : 'Submit to Logout'}
+            {isHREmployee || todaySubmitted ? 'Sign Out' : 'Submit to Logout'}
           </button>
         </div>
       </aside>
@@ -442,7 +481,8 @@ function DailyStatusContent() {
               <CalendarTodayRoundedIcon sx={{ fontSize: 12 }} />Dashboard / Daily Status Update
             </p>
           </div>
-          {isToday && (
+          {/* Today submitted badge — only for non-HR */}
+          {isToday && !isHREmployee && (
             <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold ${
               todaySubmitted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
             }`}>
@@ -453,206 +493,191 @@ function DailyStatusContent() {
           )}
         </header>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-3xl mx-auto space-y-5">
+        {/* ── HR blocked screen ── */}
+        {isHREmployee ? (
+          <HRBlockedScreen />
+        ) : (
+          /* ── Normal content for non-HR employees ── */
+          <main className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-3xl mx-auto space-y-5">
 
-            {/* Logout warning banner */}
-            {!todaySubmitted && isToday && (
-              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                <LockRoundedIcon sx={{ fontSize: 18, color: '#d97706', flexShrink: 0, mt: '1px' }} />
-                <div>
-                  <p className="text-sm font-bold text-amber-800">Daily Status Required to Logout</p>
-                  <p className="text-xs text-amber-700 mt-0.5">
-                    Submit today's work summary below before you can sign out.
-                  </p>
+              {/* Logout warning banner */}
+              {!todaySubmitted && isToday && (
+                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <LockRoundedIcon sx={{ fontSize: 18, color: '#d97706', flexShrink: 0, mt: '1px' }} />
+                  <div>
+                    <p className="text-sm font-bold text-amber-800">Daily Status Required to Logout</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Submit today's work summary below before you can sign out.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {saveMsg && (
-              <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm text-emerald-700 font-semibold">
-                <CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />{saveMsg}
-              </div>
-            )}
-            {saveErrMsg && (
-              <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700 font-semibold">
-                <WarningRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />{saveErrMsg}
-              </div>
-            )}
-
-            {/* Form Card */}
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <EditNoteRoundedIcon sx={{ fontSize: 20, color: '#3b82f6' }} />
+              {saveMsg && (
+                <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm text-emerald-700 font-semibold">
+                  <CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />{saveMsg}
                 </div>
-                <div>
-                  <h2 className="font-extrabold text-slate-900 text-sm">Update Your Daily Work Status</h2>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Record your work summary, plans, and any blockers
-                  </p>
+              )}
+              {saveErrMsg && (
+                <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700 font-semibold">
+                  <WarningRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />{saveErrMsg}
                 </div>
-                {hasReport && !isEditing && (
-                  <span className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">
-                    <CheckCircleRoundedIcon sx={{ fontSize: 12 }} />Submitted
-                  </span>
-                )}
-              </div>
+              )}
 
-              {loading ? (
-                <div className="flex items-center justify-center py-16">
-                  <div className="w-7 h-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="ml-3 text-slate-500 text-sm font-medium">Loading…</span>
+              {/* Form Card */}
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <EditNoteRoundedIcon sx={{ fontSize: 20, color: '#3b82f6' }} />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-slate-900 text-sm">Update Your Daily Work Status</h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Record your work summary, plans, and any blockers
+                    </p>
+                  </div>
+                  {hasReport && !isEditing && (
+                    <span className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">
+                      <CheckCircleRoundedIcon sx={{ fontSize: 12 }} />Submitted
+                    </span>
+                  )}
                 </div>
-              ) : (
-                <div className="p-6 space-y-5">
 
-                  {/* Date + Task Title row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Date
-                      </label>
-                      <div className="relative">
-                        <CalendarTodayRoundedIcon
-                          sx={{ fontSize: 14 }}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                        />
+                {loading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <div className="w-7 h-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span className="ml-3 text-slate-500 text-sm font-medium">Loading…</span>
+                  </div>
+                ) : (
+                  <div className="p-6 space-y-5">
+
+                    {/* Date + Task Title row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Date
+                        </label>
+                        <div className="relative">
+                          <CalendarTodayRoundedIcon
+                            sx={{ fontSize: 14 }}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                          />
+                          <input
+                            type="date"
+                            value={date}
+                            max={today}
+                            onChange={e => setDate(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none font-semibold"
+                          />
+                        </div>
+                        {isToday && (
+                          <p className="text-[10px] text-blue-500 font-bold mt-1 flex items-center gap-1">
+                            <TodayRoundedIcon sx={{ fontSize: 11 }} />Today
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Task Title
+                        </label>
                         <input
-                          type="date"
-                          value={date}
-                          max={today}
-                          onChange={e => setDate(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none font-semibold"
+                          type="text"
+                          placeholder="e.g. Holiday Calendar Development"
+                          value={taskTitle}
+                          onChange={e => setTaskTitle(e.target.value)}
+                          disabled={!canEdit}
+                          className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed"
                         />
                       </div>
-                      {isToday && (
-                        <p className="text-[10px] text-blue-500 font-bold mt-1 flex items-center gap-1">
-                          <TodayRoundedIcon sx={{ fontSize: 11 }} />Today
+                    </div>
+
+                    {/* Work Summary */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          Work Summary (Today's Work)
+                          <InfoOutlinedIcon sx={{ fontSize: 13, color: '#94a3b8', ml: '4px', verticalAlign: 'middle' }} />
+                        </label>
+                        <WordCounter text={workSummary} max={MAX_WORDS} />
+                      </div>
+                      <textarea
+                        rows={6}
+                        placeholder="Describe what you worked on today…"
+                        value={workSummary}
+                        onChange={e => setWorkSummary(e.target.value)}
+                        disabled={!canEdit}
+                        className={`w-full px-3 py-2.5 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed transition-colors ${
+                          overLimit ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-blue-500'
+                        }`}
+                      />
+                      {overLimit && (
+                        <p className="text-[11px] text-red-500 font-semibold mt-1 flex items-center gap-1">
+                          <WarningRoundedIcon sx={{ fontSize: 12 }} />Exceeds {MAX_WORDS} word limit
                         </p>
                       )}
                     </div>
+
+                    {/* Tomorrow's Plan */}
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Task Title
+                        Tomorrow's Plan
                       </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Holiday Calendar Development"
-                        value={taskTitle}
-                        onChange={e => setTaskTitle(e.target.value)}
+                      <textarea
+                        rows={3}
+                        placeholder="What do you plan to work on tomorrow?"
+                        value={tomorrowPlan}
+                        onChange={e => setTomorrowPlan(e.target.value)}
                         disabled={!canEdit}
-                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
-                  </div>
 
-                  {/* Work Summary */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Work Summary (Today's Work)
-                        <InfoOutlinedIcon sx={{ fontSize: 13, color: '#94a3b8', ml: '4px', verticalAlign: 'middle' }} />
-                      </label>
-                      <WordCounter text={workSummary} max={MAX_WORDS} />
-                    </div>
-                    <textarea
-                      rows={6}
-                      placeholder="Describe what you worked on today…"
-                      value={workSummary}
-                      onChange={e => setWorkSummary(e.target.value)}
-                      disabled={!canEdit}
-                      className={`w-full px-3 py-2.5 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed transition-colors ${
-                        overLimit ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-blue-500'
-                      }`}
-                    />
-                    {overLimit && (
-                      <p className="text-[11px] text-red-500 font-semibold mt-1 flex items-center gap-1">
-                        <WarningRoundedIcon sx={{ fontSize: 12 }} />Exceeds {MAX_WORDS} word limit
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Tomorrow's Plan */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Tomorrow's Plan
-                    </label>
-                    <textarea
-                      rows={3}
-                      placeholder="What do you plan to work on tomorrow?"
-                      value={tomorrowPlan}
-                      onChange={e => setTomorrowPlan(e.target.value)}
-                      disabled={!canEdit}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  {/* Blockers */}
-                  {/* <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Blockers / Issues (if any)
-                      </label>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-400 text-[10px] font-bold rounded-full">
-                        <BlockRoundedIcon sx={{ fontSize: 10 }} />Optional
-                      </span>
-                    </div>
-                    <textarea
-                      rows={2}
-                      placeholder="e.g. No blockers at the moment."
-                      value={blockers}
-                      onChange={e => setBlockers(e.target.value)}
-                      disabled={!canEdit}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
-                    />
-                  </div> */}
-
-                  {/* Action buttons */}
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    {hasReport && !isEditing ? (
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200"
-                      >
-                        <EditNoteRoundedIcon sx={{ fontSize: 16 }} />Edit Update
-                      </button>
-                    ) : (
-                      <>
+                    {/* Action buttons */}
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      {hasReport && !isEditing ? (
                         <button
-                          onClick={handleCancel}
-                          className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-semibold transition-colors"
+                          onClick={() => setIsEditing(true)}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200"
                         >
-                          Cancel
+                          <EditNoteRoundedIcon sx={{ fontSize: 16 }} />Edit Update
                         </button>
-                        <button
-                          onClick={handleSave}
-                          disabled={saving || overLimit}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200"
-                        >
-                          <SaveRoundedIcon sx={{ fontSize: 16 }} />
-                          {saving ? 'Saving…' : 'Save Update'}
-                        </button>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleCancel}
+                            className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-semibold transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSave}
+                            disabled={saving || overLimit}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200"
+                          >
+                            <SaveRoundedIcon sx={{ fontSize: 16 }} />
+                            {saving ? 'Saving…' : 'Save Update'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+
                   </div>
+                )}
+              </div>
 
-                </div>
-              )}
+              {/* Info tip */}
+              <div className="flex items-start gap-3 px-4 py-3.5 bg-blue-50 border border-blue-100 rounded-2xl">
+                <InfoOutlinedIcon sx={{ fontSize: 16, color: '#7c3aed', flexShrink: 0, mt: '1px' }} />
+                <p className="text-[12px] text-blue-700 font-medium leading-relaxed">
+                  Submit your daily status to unlock the logout button. To update a submitted report, click{' '}
+                  <strong>Edit Update</strong>. Past dates are also editable.
+                </p>
+              </div>
+
             </div>
-
-            {/* Info tip */}
-            <div className="flex items-start gap-3 px-4 py-3.5 bg-blue-50 border border-blue-100 rounded-2xl">
-              <InfoOutlinedIcon sx={{ fontSize: 16, color: '#7c3aed', flexShrink: 0, mt: '1px' }} />
-              <p className="text-[12px] text-blue-700 font-medium leading-relaxed">
-                Submit your daily status to unlock the logout button. To update a submitted report, click{' '}
-                <strong>Edit Update</strong>. Past dates are also editable.
-              </p>
-            </div>
-
-          </div>
-        </main>
+          </main>
+        )}
       </div>
     </div>
   )

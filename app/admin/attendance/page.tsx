@@ -99,9 +99,32 @@ interface FlatRecord {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function toDateString(ts: Timestamp): string {
-  try { return ts.toDate().toISOString().split('T')[0] } catch { return '' }
+
+/**
+ * FIX: Get today's local date as YYYY-MM-DD without UTC offset issues.
+ * new Date().toISOString() returns UTC — in IST (+5:30) this gives yesterday
+ * for any time before 05:30 UTC (i.e. before 11:00 IST the next day is fine,
+ * but the safe approach is always use local year/month/day).
+ */
+function getLocalDateString(date: Date = new Date()): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
+
+/**
+ * FIX: Convert a Firestore Timestamp to a local YYYY-MM-DD string.
+ * Previously used ts.toDate().toISOString().split('T')[0] which returns the
+ * UTC date — in IST (+5:30) a record saved at e.g. 10 Jun 00:30 IST is
+ * actually 9 Jun 19:00 UTC, so it was being bucketed under 9 Jun.
+ * Using getLocalDateString(ts.toDate()) reads the local wall-clock date
+ * so Firestore timestamps always map to the correct IST calendar day.
+ */
+function toDateString(ts: Timestamp): string {
+  try { return getLocalDateString(ts.toDate()) } catch { return '' }
+}
+
 function formatTime(ts: Timestamp | undefined | null): string {
   if (!ts) return '—'
   try { return ts.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } catch { return '—' }
@@ -124,6 +147,7 @@ function isSundayStr(dateStr: string): boolean {
   return new Date(dateStr + 'T00:00:00').getDay() === 0
 }
 function sameDayStr(a: Date, dateStr: string): boolean {
+  // FIX: compare using local date parts, not UTC
   const b = new Date(dateStr + 'T00:00:00')
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
@@ -366,7 +390,11 @@ function AttendanceContent() {
   const [saveMsg,     setSaveMsg]     = useState('')
   const [saveErrMsg,  setSaveErrMsg]  = useState('')
 
-  const today = new Date().toISOString().split('T')[0]
+  // FIX: Use getLocalDateString() instead of new Date().toISOString().split('T')[0]
+  // toISOString() returns UTC — in IST (+5:30) this gives yesterday's date before
+  // 05:30 UTC (i.e. the entire afternoon/evening in IST reads as the previous UTC day).
+  const today = getLocalDateString()
+
   const [startDate, setStartDate] = useState(today)
   const [endDate,   setEndDate]   = useState(today)
 
@@ -406,11 +434,13 @@ function AttendanceContent() {
     const cursor   = new Date(startDate + 'T00:00:00')
     const rangeEnd = new Date(endDate   + 'T00:00:00')
     while (cursor <= rangeEnd) {
-      allDates.push(cursor.toISOString().split('T')[0])
+      // FIX: use getLocalDateString here too so date generation is consistent
+      allDates.push(getLocalDateString(cursor))
       cursor.setDate(cursor.getDate() + 1)
     }
 
     // Attendance map: uid_date → record
+    // toDateString() now uses local date so keys match allDates entries
     const attMap = new Map<string, AttendanceRecord>()
     attendance
       .filter(a => { const d = toDateString(a.date); return d >= startDate && d <= endDate })
@@ -504,97 +534,116 @@ function AttendanceContent() {
   const handleLogout = async () => { await signOut(); router.push('/') }
 
   // ── Save edited record ────────────────────────────────────────────────────
-  // Returns { ok, error } so the modal can show inline errors instead of
-  // swallowing them silently.
   const handleSaveEdit = async (
-  record: FlatRecord,
-  newCheckIn: string,
-  newCheckOut: string,
-  newStatus: RowStatus,
-): Promise<{ ok: boolean; error?: string }> => {
-  try {
-    const dateObj = new Date(record.date + 'T00:00:00')
+    record: FlatRecord,
+    newCheckIn: string,
+    newCheckOut: string,
+    newStatus: RowStatus,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const dateObj = new Date(record.date + 'T00:00:00')
 
-    // ── On Leave: create a leaveRequest, remove attendance doc if exists ──
-    if (newStatus === 'On Leave') {
-      await createAdminLeaveEntry(
-        record.uid,
-        record.name,
-        record.date,
-        userProfile!.uid,
-      )
-      // If there was an existing attendance doc, delete it so it
-      // doesn't show as Present overriding the leave
-      if (record.firestoreId) {
-        await deleteDoc(doc(db, 'attendance', record.firestoreId))
+      if (newStatus === 'On Leave') {
+        await createAdminLeaveEntry(
+          record.uid,
+          record.name,
+          record.date,
+          userProfile!.uid,
+        )
+        if (record.firestoreId) {
+          await deleteDoc(doc(db, 'attendance', record.firestoreId))
+        }
+        setSaveMsg(`Marked ${record.name} as On Leave for ${formatDate(record.date)}`)
+        setTimeout(() => setSaveMsg(''), 4000)
+        return { ok: true }
       }
-      setSaveMsg(`Marked ${record.name} as On Leave for ${formatDate(record.date)}`)
+
+      const toTimestamp = (timeStr: string): Timestamp | null => {
+        if (!timeStr) return null
+        const [h, m] = timeStr.split(':').map(Number)
+        const d = new Date(dateObj)
+        d.setHours(h, m, 0, 0)
+        return Timestamp.fromDate(d)
+      }
+
+      const checkInTs  = toTimestamp(newCheckIn)
+      const checkOutTs = toTimestamp(newCheckOut)
+      let workHours    = 0
+      if (checkInTs && checkOutTs) {
+        const ms = checkOutTs.toDate().getTime() - checkInTs.toDate().getTime()
+        workHours = Math.max(0, Math.round((ms / 3600000) * 100) / 100)
+      }
+
+      const attStatus = newStatus === 'Present' ? 'present' : 'absent'
+
+      if (record.firestoreId) {
+        await updateDoc(doc(db, 'attendance', record.firestoreId), {
+          status:       attStatus,
+          checkInTime:  checkInTs,
+          checkOutTime: checkOutTs,
+          workHours,
+        })
+      } else {
+        await addDoc(collection(db, 'attendance'), {
+          uid:          record.uid,
+          userId:       record.uid,
+          date:         Timestamp.fromDate(dateObj),
+          status:       attStatus,
+          checkInTime:  checkInTs,
+          checkOutTime: checkOutTs,
+          workHours,
+          createdBy:    'admin',
+        })
+      }
+
+      setSaveMsg(`Updated ${record.name}'s attendance for ${formatDate(record.date)}`)
+      setSaveErrMsg('')
       setTimeout(() => setSaveMsg(''), 4000)
       return { ok: true }
+
+    } catch (err: any) {
+      console.error('Save failed:', err?.code, err?.message, err)
+      const msg = err?.code === 'permission-denied'
+        ? `Permission denied — check Firestore rules. (code: ${err.code})`
+        : err?.message ?? 'Unknown error'
+      setSaveErrMsg(msg)
+      setTimeout(() => setSaveErrMsg(''), 6000)
+      return { ok: false, error: msg }
     }
-
-    // ── Present / Absent: write to attendance collection ─────────────────
-    const toTimestamp = (timeStr: string): Timestamp | null => {
-      if (!timeStr) return null
-      const [h, m] = timeStr.split(':').map(Number)
-      const d = new Date(dateObj)
-      d.setHours(h, m, 0, 0)
-      return Timestamp.fromDate(d)
-    }
-
-    const checkInTs  = toTimestamp(newCheckIn)
-    const checkOutTs = toTimestamp(newCheckOut)
-    let workHours    = 0
-    if (checkInTs && checkOutTs) {
-      const ms = checkOutTs.toDate().getTime() - checkInTs.toDate().getTime()
-      workHours = Math.max(0, Math.round((ms / 3600000) * 100) / 100)
-    }
-
-    const attStatus = newStatus === 'Present' ? 'present' : 'absent'
-
-    if (record.firestoreId) {
-      await updateDoc(doc(db, 'attendance', record.firestoreId), {
-        status:       attStatus,
-        checkInTime:  checkInTs,
-        checkOutTime: checkOutTs,
-        workHours,
-      })
-    } else {
-      await addDoc(collection(db, 'attendance'), {
-        uid:          record.uid,
-        userId:       record.uid,
-        date:         Timestamp.fromDate(dateObj),
-        status:       attStatus,
-        checkInTime:  checkInTs,
-        checkOutTime: checkOutTs,
-        workHours,
-        createdBy:    'admin',
-      })
-    }
-
-    setSaveMsg(`Updated ${record.name}'s attendance for ${formatDate(record.date)}`)
-    setSaveErrMsg('')
-    setTimeout(() => setSaveMsg(''), 4000)
-    return { ok: true }
-
-  } catch (err: any) {
-    console.error('Save failed:', err?.code, err?.message, err)
-    const msg = err?.code === 'permission-denied'
-      ? `Permission denied — check Firestore rules. (code: ${err.code})`
-      : err?.message ?? 'Unknown error'
-    setSaveErrMsg(msg)
-    setTimeout(() => setSaveErrMsg(''), 6000)
-    return { ok: false, error: msg }
   }
-}
 
   const navItems = [
-    { href: '/admin/dashboard',  icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: false },
-    { href: '/admin/employees',  icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Employees',      active: false },
-    { href: '/admin/attendance', icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />, label: 'Attendance',     active: true  },
-    // { href: '/admin/leaves',     icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Leave Requests', active: false },
-    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status',   active: false },
-    { href: '/admin/settings',   icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Settings',       active: false },
+    { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',    active: false },
+    { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Employees',    active: false },
+    { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Attendance',   active: true  },
+    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Daily Status', active: false },
+    { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Settings',     active: false },
+  ]
+
+  // FIX: Quick range buttons also use getLocalDateString() so "Today" always
+  // resolves to the correct IST calendar date, not the UTC date.
+  const quickRanges = [
+    { label: 'Today',        start: today, end: today },
+    {
+      label: 'This Week',
+      start: (() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return getLocalDateString(d) })(),
+      end: today,
+    },
+    {
+      label: 'This Month',
+      start: getLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+      end: today,
+    },
+    {
+      label: 'Last 7 Days',
+      start: (() => { const d = new Date(); d.setDate(d.getDate() - 6); return getLocalDateString(d) })(),
+      end: today,
+    },
+    {
+      label: 'Last 30 Days',
+      start: (() => { const d = new Date(); d.setDate(d.getDate() - 29); return getLocalDateString(d) })(),
+      end: today,
+    },
   ]
 
   return (
@@ -775,13 +824,7 @@ function AttendanceContent() {
             {/* Quick range buttons */}
             <div className="flex items-center gap-2 mt-4 flex-wrap">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick:</span>
-              {[
-                { label: 'Today',        start: today, end: today },
-                { label: 'This Week',    start: (() => { const d = new Date(); d.setDate(d.getDate() - d.getDay() + 1); return d.toISOString().split('T')[0] })(), end: today },
-                { label: 'This Month',   start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], end: today },
-                { label: 'Last 7 Days',  start: (() => { const d = new Date(); d.setDate(d.getDate() - 6);  return d.toISOString().split('T')[0] })(), end: today },
-                { label: 'Last 30 Days', start: (() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().split('T')[0] })(), end: today },
-              ].map(q => {
+              {quickRanges.map(q => {
                 const isActive = startDate === q.start && endDate === q.end
                 return (
                   <button key={q.label} onClick={() => { setStartDate(q.start); setEndDate(q.end) }}

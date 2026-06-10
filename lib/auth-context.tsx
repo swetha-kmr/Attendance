@@ -21,6 +21,7 @@ export interface UserProfile {
   createdAt: Timestamp
   lastLogin: Timestamp
   status: 'active' | 'inactive'
+  showDailyStatus?: boolean
 }
 
 interface AuthContextType {

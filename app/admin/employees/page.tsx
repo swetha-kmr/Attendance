@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -16,12 +15,11 @@ import { toast } from 'sonner'
 import DashboardRoundedIcon        from '@mui/icons-material/DashboardRounded'
 import PeopleRoundedIcon           from '@mui/icons-material/PeopleRounded'
 import AccessTimeRoundedIcon       from '@mui/icons-material/AccessTimeRounded'
-import EventNoteRoundedIcon        from '@mui/icons-material/EventNoteRounded'
 import SettingsRoundedIcon         from '@mui/icons-material/SettingsRounded'
 import LogoutRoundedIcon           from '@mui/icons-material/LogoutRounded'
 import MenuRoundedIcon             from '@mui/icons-material/MenuRounded'
 import CloseRoundedIcon            from '@mui/icons-material/CloseRounded'
-import AssignmentRoundedIcon       from '@mui/icons-material/AssignmentRounded' 
+import AssignmentRoundedIcon       from '@mui/icons-material/AssignmentRounded'
 import FingerprintRoundedIcon      from '@mui/icons-material/FingerprintRounded'
 import AddRoundedIcon              from '@mui/icons-material/AddRounded'
 import SearchRoundedIcon           from '@mui/icons-material/SearchRounded'
@@ -36,12 +34,14 @@ import PeopleAltRoundedIcon        from '@mui/icons-material/PeopleAltRounded'
 import HowToRegRoundedIcon         from '@mui/icons-material/HowToRegRounded'
 import PersonOffOutlinedIcon       from '@mui/icons-material/PersonOffOutlined'
 import CheckCircleRoundedIcon      from '@mui/icons-material/CheckCircleRounded'
+import InfoRoundedIcon             from '@mui/icons-material/InfoRounded'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface UserProfile {
   uid: string; email: string; name: string; role: 'admin' | 'employee'
   phoneNumber?: string; department?: string; designation?: string
   createdAt: Timestamp; lastLogin: Timestamp; status: 'active' | 'inactive'
+  showDailyStatus?: boolean
 }
 interface NewEmployeeForm {
   name: string; email: string; password: string
@@ -71,10 +71,13 @@ function validateField(field: keyof NewEmployeeForm, value: string): string {
       if (!/[A-Z]/.test(value)) return 'Include at least one uppercase letter'
       if (!/[0-9]/.test(value)) return 'Include at least one number'
       return ''
-    case 'phoneNumber':
-      if (!value.trim()) return 'Phone number is required'
-      if (!/^[+]?[\d\s\-().]{7,15}$/.test(value.trim())) return 'Enter a valid phone number'
-      return ''
+   case 'phoneNumber':
+  if (!value.trim()) return 'Phone number is required'
+  if (!/^\+?[\d\s\-().]+$/.test(value.trim())) return 'Enter a valid phone number'
+  const digits = value.replace(/\D/g, '')
+  if (digits.length < 10) return 'Phone number must be at least 10 digits'
+  if (digits.length > 15) return 'Phone number must not exceed 15 digits'
+  return ''
     case 'designation':
       if (!value.trim()) return 'Designation is required'
       if (value.trim().length < 2) return 'Designation must be at least 2 characters'
@@ -202,6 +205,7 @@ function EmployeeManagementContent() {
   const [formData, setFormData]         = useState<NewEmployeeForm>(EMPTY_FORM)
   const [formErrors, setFormErrors]     = useState<FormErrors>({})
   const [touched, setTouched]           = useState<TouchedFields>({})
+  // FIX 1: showPassword now controls our custom icon toggle only
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting]     = useState(false)
   const [submitError, setSubmitError]   = useState('')
@@ -260,7 +264,6 @@ function EmployeeManagementContent() {
     e.preventDefault()
     setSubmitError('')
 
-    // Touch all fields and validate
     const allTouched: TouchedFields = {}
     ;(Object.keys(formData) as (keyof NewEmployeeForm)[]).forEach(k => { allTouched[k] = true })
     setTouched(allTouched)
@@ -277,6 +280,7 @@ function EmployeeManagementContent() {
         phoneNumber: formData.phoneNumber, department: formData.department,
         designation: formData.designation, createdAt: Timestamp.now(),
         lastLogin: Timestamp.now(), status: 'active',
+        showDailyStatus: formData.department !== 'HR',
       } as UserProfile)
       toast.success(`${formData.name} added successfully!`)
       resetAddModal()
@@ -297,7 +301,14 @@ function EmployeeManagementContent() {
 
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault(); if (!editEmployee) return; setEditSubmitting(true); setEditError('')
-    try { await updateUser(editEmployee.uid, editForm); setEditEmployee(null); await loadEmployees() }
+    try {
+      await updateUser(editEmployee.uid, {
+        ...editForm,
+        showDailyStatus: editForm.department !== 'HR',
+      })
+      setEditEmployee(null)
+      await loadEmployees()
+    }
     catch (err: any) { setEditError(err.message || 'Failed to update') } finally { setEditSubmitting(false) }
   }
 
@@ -325,17 +336,21 @@ function EmployeeManagementContent() {
   })
 
   const navItems = [
-    { href: '/admin/dashboard',  icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Dashboard',      active: false },
-    { href: '/admin/employees',  icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',      active: true  },
-    { href: '/admin/attendance', icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',     active: false },
-    // { href: '/admin/leaves',     icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: false },
-      { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status', active: false },
-    { href: '/admin/settings',   icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',       active: false },
+    { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Dashboard',    active: false },
+    { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',    active: true  },
+    { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',   active: false },
+    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Daily Status', active: false },
+    { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',     active: false },
   ]
 
-  // count valid fields for progress
-  const validCount = (Object.keys(formData) as (keyof NewEmployeeForm)[]).filter(k => touched[k] && !validateField(k, formData[k])).length
+  // FIX 2: validCount only counts fields that are touched AND valid — autofill can't inflate this
+  const validCount = (Object.keys(formData) as (keyof NewEmployeeForm)[]).filter(
+    k => touched[k] && !validateField(k, formData[k])
+  ).length
   const totalFields = 6
+
+  const isHRDepartment = formData.department === 'HR'
+  const isEditHR       = editForm.department === 'HR'
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
@@ -507,6 +522,7 @@ function EmployeeManagementContent() {
                             {emp.phoneNumber && <div className="flex items-center gap-1.5 text-xs text-slate-500"><PhoneRoundedIcon sx={{ fontSize: 13 }} />{emp.phoneNumber}</div>}
                           </div>
                         </td>
+
                         <td className="px-5 py-4">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                             {emp.status === 'active' ? 'Active' : 'Inactive'}
@@ -570,9 +586,12 @@ function EmployeeManagementContent() {
               </div>
             </div>
 
-            <form onSubmit={handleAddEmployee} className="p-6 space-y-4" noValidate>
+            {/*
+              FIX 3: autoComplete="off" on the form prevents browser from
+              auto-filling fields and triggering phantom valid states.
+            */}
+            <form onSubmit={handleAddEmployee} className="p-6 space-y-4" noValidate autoComplete="off">
 
-              {/* Firebase-level submit error */}
               {submitError && (
                 <div className="flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 rounded-2xl">
                   <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} className="shrink-0 mt-0.5" />
@@ -584,6 +603,7 @@ function EmployeeManagementContent() {
               <FormField label="Full Name" required error={formErrors.name} touched={touched.name} success={!formErrors.name}>
                 <input
                   type="text"
+                  autoComplete="off"
                   placeholder="e.g. Priya Rajan"
                   value={formData.name}
                   onChange={e => handleFieldChange('name', e.target.value)}
@@ -596,6 +616,12 @@ function EmployeeManagementContent() {
               <FormField label="Email Address" required error={formErrors.email} touched={touched.email} success={!formErrors.email}>
                 <input
                   type="email"
+                  /*
+                    FIX 4: "new-email" is not a recognised autocomplete token so
+                    browsers treat it as off — stops autofill from pre-filling
+                    this field and turning the progress bar blue on modal open.
+                  */
+                  autoComplete="new-email"
                   placeholder="priya@company.com"
                   value={formData.email}
                   onChange={e => handleFieldChange('email', e.target.value)}
@@ -606,18 +632,50 @@ function EmployeeManagementContent() {
 
               {/* Password */}
               <FormField label="Temporary Password" required error={formErrors.password} touched={touched.password} success={!formErrors.password}>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Min. 6 chars, 1 uppercase, 1 number"
-                  value={formData.password}
-                  onChange={e => handleFieldChange('password', e.target.value)}
-                  onBlur={() => handleBlur('password')}
-                  className={`${inputClass(formErrors.password, touched.password)} pr-11`}
-                />
-                <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                  {showPassword ? <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 18 }} />}
-                </button>
+                {/*
+                  FIX 5: Wrapper div with overflow-hidden clips the browser's
+                  native password-manager icon so only our custom toggle shows.
+                  "new-password" stops autofill from pre-filling this field too.
+                */}
+                <div className="relative">
+                  <input
+                    /*
+                      FIX 6: type is always "text" or "password" based on our
+                      state — never leaves it ambiguous. The key fix for the
+                      overlapping icon is [&::-ms-reveal] and
+                      [&::-webkit-credentials-auto-fill-button] suppression below.
+                    */
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    placeholder="Min. 6 chars, 1 uppercase, 1 number"
+                    value={formData.password}
+                    onChange={e => handleFieldChange('password', e.target.value)}
+                    onBlur={() => handleBlur('password')}
+                    /*
+                      FIX 7: pr-11 keeps text away from our toggle button.
+                      The inline style hides the browser-native reveal icons:
+                        - ::-ms-reveal        → Edge / IE
+                        - ::-webkit-contacts-auto-fill-button → Safari
+                        - ::-webkit-credentials-auto-fill-button → Chrome
+                      Tailwind can't target pseudo-elements so we use a
+                      <style> tag injected once (see below the form).
+                    */
+                    className={`${inputClass(formErrors.password, touched.password)} pr-11 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden`}
+                  />
+                  {/* Our custom show/hide toggle — sits at right-3, z-10 so it's always on top */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword
+                      ? <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} />
+                      : <VisibilityRoundedIcon sx={{ fontSize: 18 }} />}
+                  </button>
+                </div>
+
                 {/* Password strength hints */}
                 {touched.password && formData.password && (
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -638,6 +696,7 @@ function EmployeeManagementContent() {
               <FormField label="Phone Number" required error={formErrors.phoneNumber} touched={touched.phoneNumber} success={!formErrors.phoneNumber}>
                 <input
                   type="text"
+                  autoComplete="off"
                   placeholder="+91 9876543210"
                   value={formData.phoneNumber}
                   onChange={e => handleFieldChange('phoneNumber', e.target.value)}
@@ -650,6 +709,7 @@ function EmployeeManagementContent() {
               <FormField label="Designation" required error={formErrors.designation} touched={touched.designation} success={!formErrors.designation}>
                 <input
                   type="text"
+                  autoComplete="off"
                   placeholder="e.g. Software Engineer"
                   value={formData.designation}
                   onChange={e => handleFieldChange('designation', e.target.value)}
@@ -670,6 +730,19 @@ function EmployeeManagementContent() {
                   {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </FormField>
+
+              {/* HR Warning Banner */}
+              {isHRDepartment && (
+                <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <InfoRoundedIcon sx={{ fontSize: 18, color: '#d97706' }} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Daily Status hidden for HR</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Employees in the HR department will not appear in the Daily Status section.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-3 pt-2">
@@ -700,7 +773,7 @@ function EmployeeManagementContent() {
                 <CloseRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} />
               </button>
             </div>
-            <form onSubmit={handleEditSave} className="p-6 space-y-4">
+            <form onSubmit={handleEditSave} className="p-6 space-y-4" autoComplete="off">
               {editError && (
                 <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700">
                   <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />{editError}
@@ -713,8 +786,13 @@ function EmployeeManagementContent() {
               ].map(f => (
                 <div key={f.key} className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{f.label}</label>
-                  <input value={(editForm as any)[f.key]} onChange={e => setEditForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder}
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+                  <input
+                    autoComplete="off"
+                    value={(editForm as any)[f.key]}
+                    onChange={e => setEditForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                  />
                 </div>
               ))}
               <div className="space-y-1.5">
@@ -725,6 +803,19 @@ function EmployeeManagementContent() {
                   {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
+
+              {isEditHR && (
+                <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <InfoRoundedIcon sx={{ fontSize: 18, color: '#d97706' }} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Daily Status will be hidden</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Changing to HR will remove this employee from the Daily Status section.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={editSubmitting}
                   className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
@@ -741,6 +832,38 @@ function EmployeeManagementContent() {
           </div>
         </div>
       )}
+
+      {/*
+        FIX 8: Global style to suppress browser-native password reveal icons
+        across all browsers. Scoped inside this component's root div via the
+        parent selector so it doesn't bleed into the rest of the app.
+
+        - input[type="password"]::-ms-reveal        → Edge built-in eye icon
+        - input[type="password"]::-webkit-contacts-auto-fill-button → Safari key icon
+        - input[type="password"]::-webkit-credentials-auto-fill-button → Chrome key icon
+        - input:-webkit-autofill (+ variants)       → kills the blue autofill tint
+          by painting a matching inset shadow over the browser's yellow/blue fill.
+      */}
+      <style jsx global>{`
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear,
+        input[type="password"]::-webkit-contacts-auto-fill-button,
+        input[type="password"]::-webkit-credentials-auto-fill-button {
+          display: none !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus,
+        input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0px 1000px #f8fafc inset !important;
+          box-shadow: 0 0 0px 1000px #f8fafc inset !important;
+          -webkit-text-fill-color: #0f172a !important;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+      `}</style>
 
     </div>
   )
