@@ -9,7 +9,6 @@ import { Timestamp, collection, addDoc, deleteDoc, doc, getDocs, query, orderBy 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-
 import DashboardRoundedIcon     from '@mui/icons-material/DashboardRounded'
 import PeopleRoundedIcon        from '@mui/icons-material/PeopleRounded'
 import AccessTimeRoundedIcon    from '@mui/icons-material/AccessTimeRounded'
@@ -26,6 +25,7 @@ import DeleteRoundedIcon        from '@mui/icons-material/DeleteRounded'
 import WarningAmberRoundedIcon  from '@mui/icons-material/WarningAmberRounded'
 import CheckCircleRoundedIcon   from '@mui/icons-material/CheckCircleRounded'
 import VisibilityRoundedIcon    from '@mui/icons-material/VisibilityRounded'
+import BeachAccessRoundedIcon   from '@mui/icons-material/BeachAccessRounded'
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
 import EmailRoundedIcon         from '@mui/icons-material/EmailRounded'
 import PhoneRoundedIcon         from '@mui/icons-material/PhoneRounded'
@@ -34,10 +34,11 @@ import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded'
 import InfoRoundedIcon          from '@mui/icons-material/InfoRounded'
 import WbSunnyRoundedIcon       from '@mui/icons-material/WbSunnyRounded'
 import CelebrationRoundedIcon   from '@mui/icons-material/CelebrationRounded'
+import CakeRoundedIcon          from '@mui/icons-material/CakeRounded'
+import PersonRoundedIcon        from '@mui/icons-material/PersonRounded'
+import WorkRoundedIcon          from '@mui/icons-material/WorkRounded'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sad illustration
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Sad illustration ──────────────────────────────────────────────────────────
 function SadPersonIllustration() {
   return (
     <svg viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg" className="w-40 h-36 mx-auto">
@@ -65,9 +66,7 @@ function SadPersonIllustration() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Confirm Modal
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Confirm Modal ─────────────────────────────────────────────────────────────
 function ConfirmModal({ show, onClose, onConfirm, illustration, title, subtitle, confirmLabel, confirmClass, loading = false }: {
   show: boolean; onClose: () => void; onConfirm: () => void
   illustration: React.ReactNode; title: string; subtitle: string
@@ -91,9 +90,7 @@ function ConfirmModal({ show, onClose, onConfirm, illustration, title, subtitle,
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface UserProfile {
   uid: string; email: string; name: string; role: 'admin' | 'employee'
   phoneNumber?: string; department?: string; designation?: string
@@ -109,27 +106,23 @@ interface Holiday {
 interface HolidayForm { name: string; date: string; type: 'national' | 'regional' | 'company' }
 const EMPTY_HOLIDAY_FORM: HolidayForm = { name: '', date: '', type: 'national' }
 
+interface Birthday {
+  id: string; name: string; date: Timestamp; department?: string; userId?: string
+}
+interface BirthdayForm { name: string; date: string; department: string }
+const EMPTY_BIRTHDAY_FORM: BirthdayForm = { name: '', date: '', department: '' }
+
 const TYPE_META = {
   national: { label: 'National',  bg: 'bg-blue-100',   text: 'text-blue-700'   },
   regional: { label: 'Regional',  bg: 'bg-amber-100',  text: 'text-amber-700'  },
   company:  { label: 'Company',   bg: 'bg-violet-100', text: 'text-violet-700' },
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Holiday type badge
-// ─────────────────────────────────────────────────────────────────────────────
 function TypeBadge({ type }: { type: Holiday['type'] }) {
   const m = TYPE_META[type]
-  return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${m.bg} ${m.text}`}>
-      {m.label}
-    </span>
-  )
+  return <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${m.bg} ${m.text}`}>{m.label}</span>
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Group holidays by month
-// ─────────────────────────────────────────────────────────────────────────────
 function groupByMonth(holidays: Holiday[]): Record<string, Holiday[]> {
   return holidays.reduce<Record<string, Holiday[]>>((acc, h) => {
     const key = h.date.toDate().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
@@ -139,52 +132,84 @@ function groupByMonth(holidays: Holiday[]): Record<string, Holiday[]> {
   }, {})
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Settings Content
-// ─────────────────────────────────────────────────────────────────────────────
+// Days until birthday (yearly recurrence)
+function daysUntilBirthday(bday: Birthday): number {
+  const d     = bday.date.toDate()
+  const today = new Date()
+  const next  = new Date(today.getFullYear(), d.getMonth(), d.getDate())
+  if (next < today) next.setFullYear(today.getFullYear() + 1)
+  const diff  = next.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  return Math.ceil(diff / 86400000)
+}
+
+function isBirthdayToday(bday: Birthday): boolean {
+  const d     = bday.date.toDate()
+  const today = new Date()
+  return d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
+}
+
+// Sort birthdays by upcoming date
+function sortBirthdaysByUpcoming(birthdays: Birthday[]): Birthday[] {
+  return [...birthdays].sort((a, b) => daysUntilBirthday(a) - daysUntilBirthday(b))
+}
+
+const AVATAR_COLORS = [
+  'from-pink-500 to-rose-500',
+  'from-violet-500 to-purple-500',
+  'from-blue-500 to-cyan-500',
+  'from-amber-500 to-orange-500',
+  'from-emerald-500 to-teal-500',
+]
+
+// ── Main Settings Content ─────────────────────────────────────────────────────
 function SettingsContent() {
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
 
-  // — sidebar
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-
-  // — logout
+  const [sidebarOpen, setSidebarOpen]           = useState(true)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [logoutLoading, setLogoutLoading]         = useState(false)
 
-  // ── Admin state ──────────────────────────────────────────────────────────
-  const [admins, setAdmins]             = useState<UserProfile[]>([])
-  const [adminsLoading, setAdminsLoading] = useState(true)
-
+  // ── Admin state ───────────────────────────────────────────────────────────
+  const [admins, setAdmins]                   = useState<UserProfile[]>([])
+  const [adminsLoading, setAdminsLoading]     = useState(true)
   const [showAddAdminModal, setShowAddAdminModal] = useState(false)
-  const [adminForm, setAdminForm]                 = useState<AdminForm>(EMPTY_ADMIN_FORM)
-  const [showPassword, setShowPassword]           = useState(false)
-  const [adminSubmitting, setAdminSubmitting]     = useState(false)
-  const [adminFormError, setAdminFormError]       = useState('')
-  const [adminFormSuccess, setAdminFormSuccess]   = useState('')
-
-  const [deleteAdminTarget, setDeleteAdminTarget]     = useState<UserProfile | null>(null)
+  const [adminForm, setAdminForm]             = useState<AdminForm>(EMPTY_ADMIN_FORM)
+  const [showPassword, setShowPassword]       = useState(false)
+  const [adminSubmitting, setAdminSubmitting] = useState(false)
+  const [adminFormError, setAdminFormError]   = useState('')
+  const [adminFormSuccess, setAdminFormSuccess] = useState('')
+  const [deleteAdminTarget, setDeleteAdminTarget]         = useState<UserProfile | null>(null)
   const [deleteAdminSubmitting, setDeleteAdminSubmitting] = useState(false)
   const [deleteAdminError, setDeleteAdminError]           = useState('')
 
-  // ── Holiday state ────────────────────────────────────────────────────────
-  const [holidays, setHolidays]           = useState<Holiday[]>([])
-  const [holidaysLoading, setHolidaysLoading] = useState(true)
-
+  // ── Holiday state ─────────────────────────────────────────────────────────
+  const [holidays, setHolidays]                   = useState<Holiday[]>([])
+  const [holidaysLoading, setHolidaysLoading]     = useState(true)
   const [showAddHolidayModal, setShowAddHolidayModal] = useState(false)
-  const [holidayForm, setHolidayForm]                 = useState<HolidayForm>(EMPTY_HOLIDAY_FORM)
-  const [holidaySubmitting, setHolidaySubmitting]     = useState(false)
-  const [holidayFormError, setHolidayFormError]       = useState('')
-  const [holidayToast, setHolidayToast]               = useState('')
-
-  const [deleteHolidayTarget, setDeleteHolidayTarget]     = useState<Holiday | null>(null)
+  const [holidayForm, setHolidayForm]             = useState<HolidayForm>(EMPTY_HOLIDAY_FORM)
+  const [holidaySubmitting, setHolidaySubmitting] = useState(false)
+  const [holidayFormError, setHolidayFormError]   = useState('')
+  const [holidayToast, setHolidayToast]           = useState('')
+  const [deleteHolidayTarget, setDeleteHolidayTarget]         = useState<Holiday | null>(null)
   const [deleteHolidaySubmitting, setDeleteHolidaySubmitting] = useState(false)
 
   const currentYear = new Date().getFullYear()
   const [filterYear, setFilterYear] = useState(currentYear)
 
-  // ── Load admins ──────────────────────────────────────────────────────────
+  // ── Birthday state ────────────────────────────────────────────────────────
+  const [birthdays, setBirthdays]                 = useState<Birthday[]>([])
+  const [birthdaysLoading, setBirthdaysLoading]   = useState(true)
+  const [showAddBirthdayModal, setShowAddBirthdayModal] = useState(false)
+  const [birthdayForm, setBirthdayForm]           = useState<BirthdayForm>(EMPTY_BIRTHDAY_FORM)
+  const [birthdaySubmitting, setBirthdaySubmitting] = useState(false)
+  const [birthdayFormError, setBirthdayFormError] = useState('')
+  const [birthdayToast, setBirthdayToast]         = useState('')
+  const [deleteBirthdayTarget, setDeleteBirthdayTarget]       = useState<Birthday | null>(null)
+  const [deleteBirthdaySubmitting, setDeleteBirthdaySubmitting] = useState(false)
+  const [birthdaySearch, setBirthdaySearch]       = useState('')
+
+  // ── Load admins ───────────────────────────────────────────────────────────
   const loadAdmins = async () => {
     try {
       setAdminsLoading(true)
@@ -193,9 +218,8 @@ function SettingsContent() {
     } catch (err) { console.error(err) } finally { setAdminsLoading(false) }
   }
   useEffect(() => { loadAdmins() }, [])
-console.log("Current User:", auth.currentUser?.uid)
-console.log("Role:", userProfile?.role)
-  // ── Load holidays ────────────────────────────────────────────────────────
+
+  // ── Load holidays ─────────────────────────────────────────────────────────
   const loadHolidays = async () => {
     try {
       setHolidaysLoading(true)
@@ -205,14 +229,24 @@ console.log("Role:", userProfile?.role)
   }
   useEffect(() => { loadHolidays() }, [])
 
-  // ── Logout ───────────────────────────────────────────────────────────────
+  // ── Load birthdays ────────────────────────────────────────────────────────
+  const loadBirthdays = async () => {
+    try {
+      setBirthdaysLoading(true)
+      const snap = await getDocs(query(collection(db, 'birthdays'), orderBy('name', 'asc')))
+      setBirthdays(snap.docs.map(d => ({ id: d.id, ...d.data() } as Birthday)))
+    } catch (err) { console.error(err) } finally { setBirthdaysLoading(false) }
+  }
+  useEffect(() => { loadBirthdays() }, [])
+
+  // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogoutConfirmed = async () => {
     setLogoutLoading(true)
     try { await signOut(); router.push('/') }
     catch (err) { console.error(err); setLogoutLoading(false); setShowLogoutConfirm(false) }
   }
 
-  // ── Add admin ────────────────────────────────────────────────────────────
+  // ── Add admin ─────────────────────────────────────────────────────────────
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault(); setAdminFormError(''); setAdminSubmitting(true)
     try {
@@ -236,7 +270,7 @@ console.log("Role:", userProfile?.role)
     } finally { setAdminSubmitting(false) }
   }
 
-  // ── Delete admin ─────────────────────────────────────────────────────────
+  // ── Delete admin ──────────────────────────────────────────────────────────
   const handleDeleteAdmin = async () => {
     if (!deleteAdminTarget) return
     const activeAdmins = admins.filter(a => a.status === 'active')
@@ -252,35 +286,26 @@ console.log("Role:", userProfile?.role)
     finally { setDeleteAdminSubmitting(false) }
   }
 
-  // ── Add holiday ──────────────────────────────────────────────────────────
+  // ── Add holiday ───────────────────────────────────────────────────────────
   const handleAddHoliday = async (e: React.FormEvent) => {
     e.preventDefault(); setHolidayFormError('')
     if (!holidayForm.name.trim()) { setHolidayFormError('Holiday name is required'); return }
     if (!holidayForm.date)        { setHolidayFormError('Date is required'); return }
-    if (new Date(holidayForm.date).getDay() === 0) {
-      setHolidayFormError('Sunday is already a permanent Week Off — no need to add it separately.')
-      return
-    }
-    const alreadyExists = holidays.some(
-      h => h.date.toDate().toDateString() === new Date(holidayForm.date).toDateString()
-    )
+    if (new Date(holidayForm.date).getDay() === 0) { setHolidayFormError('Sunday is already a permanent Week Off — no need to add it separately.'); return }
+    const alreadyExists = holidays.some(h => h.date.toDate().toDateString() === new Date(holidayForm.date).toDateString())
     if (alreadyExists) { setHolidayFormError('A holiday on this date already exists.'); return }
     setHolidaySubmitting(true)
     try {
-      await addDoc(collection(db, 'holidays'), {
-        name: holidayForm.name.trim(),
-        date: Timestamp.fromDate(new Date(holidayForm.date)),
-        type: holidayForm.type,
-      })
+      await addDoc(collection(db, 'holidays'), { name: holidayForm.name.trim(), date: Timestamp.fromDate(new Date(holidayForm.date)), type: holidayForm.type })
       const addedName = holidayForm.name.trim()
       setHolidayForm(EMPTY_HOLIDAY_FORM); setShowAddHolidayModal(false)
       await loadHolidays()
-      showHolidayToast(`"${addedName}" added successfully!`)
+      showHolidayToastMsg(`"${addedName}" added successfully!`)
     } catch (err: any) { setHolidayFormError(err.message || 'Failed to add holiday') }
     finally { setHolidaySubmitting(false) }
   }
 
-  // ── Delete holiday ───────────────────────────────────────────────────────
+  // ── Delete holiday ────────────────────────────────────────────────────────
   const handleDeleteHoliday = async () => {
     if (!deleteHolidayTarget) return
     setDeleteHolidaySubmitting(true)
@@ -288,16 +313,49 @@ console.log("Role:", userProfile?.role)
       await deleteDoc(doc(db, 'holidays', deleteHolidayTarget.id))
       const name = deleteHolidayTarget.name
       setDeleteHolidayTarget(null); await loadHolidays()
-      showHolidayToast(`"${name}" removed.`)
+      showHolidayToastMsg(`"${name}" removed.`)
     } catch (err) { console.error(err) }
     finally { setDeleteHolidaySubmitting(false) }
   }
 
-  const showHolidayToast = (msg: string) => {
-    setHolidayToast(msg); setTimeout(() => setHolidayToast(''), 4000)
+  const showHolidayToastMsg = (msg: string) => { setHolidayToast(msg); setTimeout(() => setHolidayToast(''), 4000) }
+
+  // ── Add birthday ──────────────────────────────────────────────────────────
+  const handleAddBirthday = async (e: React.FormEvent) => {
+    e.preventDefault(); setBirthdayFormError('')
+    if (!birthdayForm.name.trim()) { setBirthdayFormError('Name is required'); return }
+    if (!birthdayForm.date)        { setBirthdayFormError('Date of birth is required'); return }
+    setBirthdaySubmitting(true)
+    try {
+      await addDoc(collection(db, 'birthdays'), {
+        name:       birthdayForm.name.trim(),
+        date:       Timestamp.fromDate(new Date(birthdayForm.date)),
+        department: birthdayForm.department.trim() || null,
+      })
+      const addedName = birthdayForm.name.trim()
+      setBirthdayForm(EMPTY_BIRTHDAY_FORM); setShowAddBirthdayModal(false)
+      await loadBirthdays()
+      setBirthdayToast(`Birthday for "${addedName}" added! 🎂`)
+      setTimeout(() => setBirthdayToast(''), 4000)
+    } catch (err: any) { setBirthdayFormError(err.message || 'Failed to add birthday') }
+    finally { setBirthdaySubmitting(false) }
   }
 
-  // ── Derived ──────────────────────────────────────────────────────────────
+  // ── Delete birthday ───────────────────────────────────────────────────────
+  const handleDeleteBirthday = async () => {
+    if (!deleteBirthdayTarget) return
+    setDeleteBirthdaySubmitting(true)
+    try {
+      await deleteDoc(doc(db, 'birthdays', deleteBirthdayTarget.id))
+      const name = deleteBirthdayTarget.name
+      setDeleteBirthdayTarget(null); await loadBirthdays()
+      setBirthdayToast(`"${name}" removed.`)
+      setTimeout(() => setBirthdayToast(''), 4000)
+    } catch (err) { console.error(err) }
+    finally { setDeleteBirthdaySubmitting(false) }
+  }
+
+  // ── Derived ───────────────────────────────────────────────────────────────
   const activeAdminCount = admins.filter(a => a.status === 'active').length
   const canAddAdmin = activeAdminCount === 0 || (activeAdminCount === 1 && admins.find(a => a.uid === userProfile?.uid) !== undefined)
 
@@ -306,27 +364,28 @@ console.log("Role:", userProfile?.role)
   const monthKeys     = Object.keys(grouped)
   const upcomingCount = yearHolidays.filter(h => h.date.toDate() >= new Date()).length
 
+  const sortedBirthdays   = sortBirthdaysByUpcoming(birthdays)
+  const filteredBirthdays = birthdaySearch.trim()
+    ? sortedBirthdays.filter(b => b.name.toLowerCase().includes(birthdaySearch.toLowerCase()) || b.department?.toLowerCase().includes(birthdaySearch.toLowerCase()))
+    : sortedBirthdays
+
+  const todayBirthdays = birthdays.filter(isBirthdayToday)
+
   const navItems = [
-    { href: '/admin/dashboard',  icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: false },
-    { href: '/admin/employees',  icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Employees',      active: false },
-    { href: '/admin/attendance', icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />, label: 'Attendance',     active: false },
-    // { href: '/admin/leaves',     icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Leave Requests', active: false },
-    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status', active: false },
-    { href: '/admin/settings',   icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Settings',       active: true  },
+    { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',      active: false },
+    { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Employees',      active: false },
+    { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Attendance',     active: false },
+    { href: '/admin/leaves',       icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Leave Requests', active: false },
+    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Daily Status',   active: false },
+    { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Settings',       active: true  },
   ]
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
-      {/* Logout modal */}
-      <ConfirmModal
-        show={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)}
-        onConfirm={handleLogoutConfirmed} illustration={<SadPersonIllustration />}
-        title="Comeback Soon!" subtitle="Are you sure you want to logout?"
-        confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700"
-        loading={logoutLoading}
-      />
+      <ConfirmModal show={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={handleLogoutConfirmed}
+        illustration={<SadPersonIllustration />} title="Comeback Soon!" subtitle="Are you sure you want to logout?"
+        confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700" loading={logoutLoading} />
 
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -379,13 +438,12 @@ console.log("Role:", userProfile?.role)
           </button>
           <div className="flex-1">
             <h1 className="text-xl font-extrabold text-slate-900 leading-tight">Settings</h1>
-            <p className="text-xs text-slate-400">Manage admin accounts and system configuration</p>
+            <p className="text-xs text-slate-400">Manage admin accounts, holidays and birthdays</p>
           </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* Admin success toast */}
           {adminFormSuccess && (
             <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
               <CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />
@@ -407,20 +465,16 @@ console.log("Role:", userProfile?.role)
                   <p className="text-[11px] text-slate-400">{activeAdminCount} active admin{activeAdminCount !== 1 ? 's' : ''}</p>
                 </div>
               </div>
-              <button
-                onClick={() => { setShowAddAdminModal(true); setAdminFormError(''); setAdminForm(EMPTY_ADMIN_FORM) }}
+              <button onClick={() => { setShowAddAdminModal(true); setAdminFormError(''); setAdminForm(EMPTY_ADMIN_FORM) }}
                 disabled={!canAddAdmin}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-violet-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-violet-200 disabled:opacity-40 disabled:cursor-not-allowed">
                 <AddRoundedIcon sx={{ fontSize: 16 }} />Add Admin
               </button>
             </div>
             <div className="flex items-center gap-3 px-5 py-3 bg-amber-50 border-b border-amber-100">
               <WarningAmberRoundedIcon sx={{ fontSize: 18, color: '#d97706' }} />
               <p className="text-xs text-amber-800 font-semibold">
-                {activeAdminCount >= 1
-                  ? 'Maximum 1 admin allowed — remove existing admin to add a new one'
-                  : 'Admin accounts have full system access'}
+                {activeAdminCount >= 1 ? 'Maximum 1 admin allowed — remove existing admin to add a new one' : 'Admin accounts have full system access'}
               </p>
             </div>
             {adminsLoading ? (
@@ -469,7 +523,8 @@ console.log("Role:", userProfile?.role)
                       {isLastActive && !isSelf ? (
                         <span className="text-xs text-slate-300 italic shrink-0">Last admin</span>
                       ) : (
-                        <button onClick={() => { setDeleteAdminTarget(admin); setDeleteAdminError('') }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 text-xs font-semibold transition-all shrink-0">
+                        <button onClick={() => { setDeleteAdminTarget(admin); setDeleteAdminError('') }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 text-xs font-semibold transition-all shrink-0">
                           <DeleteRoundedIcon sx={{ fontSize: 14 }} />Remove
                         </button>
                       )}
@@ -481,10 +536,136 @@ console.log("Role:", userProfile?.role)
           </div>
 
           {/* ══════════════════════════════════════════════════════════════
+              BIRTHDAY MANAGEMENT
+          ══════════════════════════════════════════════════════════════ */}
+
+          {birthdayToast && (
+            <div className="flex items-center gap-3 p-4 bg-pink-50 border border-pink-100 rounded-2xl">
+              <CakeRoundedIcon sx={{ fontSize: 20, color: '#ec4899' }} />
+              <p className="text-sm text-pink-700 font-semibold">{birthdayToast}</p>
+            </div>
+          )}
+
+          {/* Today's birthday banner for admin */}
+          {todayBirthdays.length > 0 && (
+            <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-200 rounded-2xl">
+              <span className="text-2xl">🎂</span>
+              <div>
+                <p className="text-sm font-bold text-pink-700">Birthday Today!</p>
+                <p className="text-xs text-pink-500">{todayBirthdays.map(b => b.name).join(', ')} — don't forget to wish them!</p>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center">
+                  <CakeRoundedIcon sx={{ fontSize: 18, color: '#fff' }} />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-slate-900 text-sm">Birthday Management</h2>
+                  <p className="text-[11px] text-slate-400">
+                    {birthdays.length} employee{birthdays.length !== 1 ? 's' : ''}
+                    {birthdays.filter(b => daysUntilBirthday(b) <= 30).length > 0 && ` · ${birthdays.filter(b => daysUntilBirthday(b) <= 30).length} upcoming in 30 days`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowAddBirthdayModal(true); setBirthdayFormError(''); setBirthdayForm(EMPTY_BIRTHDAY_FORM) }}
+                className="flex items-center gap-2 px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-pink-200"
+              >
+                <AddRoundedIcon sx={{ fontSize: 16 }} />Add Birthday
+              </button>
+            </div>
+
+            {/* Search */}
+            {birthdays.length > 0 && (
+              <div className="px-5 py-3 border-b border-slate-100">
+                <input
+                  placeholder="Search by name or department…"
+                  value={birthdaySearch}
+                  onChange={e => setBirthdaySearch(e.target.value)}
+                  className="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:border-pink-400 transition-all"
+                />
+              </div>
+            )}
+
+            {birthdaysLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="w-7 h-7 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                <span className="ml-3 text-slate-500 text-sm font-medium">Loading birthdays…</span>
+              </div>
+            ) : filteredBirthdays.length === 0 ? (
+              <div className="flex flex-col items-center py-16 gap-2">
+                <CakeRoundedIcon sx={{ fontSize: 36, color: '#d1d5db' }} />
+                <p className="text-sm font-medium text-slate-400">
+                  {birthdaySearch ? 'No results found' : 'No birthdays added yet'}
+                </p>
+                {!birthdaySearch && (
+                  <button onClick={() => { setShowAddBirthdayModal(true); setBirthdayFormError(''); setBirthdayForm(EMPTY_BIRTHDAY_FORM) }}
+                    className="mt-1 text-xs text-pink-500 font-semibold hover:underline">
+                    + Add first birthday
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {filteredBirthdays.map((b, i) => {
+                  const d       = b.date.toDate()
+                  const isToday = isBirthdayToday(b)
+                  const days    = daysUntilBirthday(b)
+                  return (
+                    <div key={b.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors ${isToday ? 'bg-pink-50/50' : ''}`}>
+                      <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white font-bold text-sm shrink-0`}>
+                        {b.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold text-slate-900">{b.name}</p>
+                          {isToday && <span className="text-[10px] bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full font-bold animate-pulse">🎂 Today!</span>}
+                          {!isToday && days <= 7 && <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold">Soon</span>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <p className="text-[11px] text-slate-400">
+                            {d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}
+                          </p>
+                          {b.department && (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                              <WorkRoundedIcon sx={{ fontSize: 11 }} />{b.department}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 mr-2">
+                        <p className="text-xs font-bold text-slate-700">
+                          {isToday ? '🎉 Today' : days === 1 ? 'Tomorrow' : `${days} days`}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {d.toLocaleDateString('en-IN', { weekday: 'short' })}
+                        </p>
+                      </div>
+                      <button onClick={() => setDeleteBirthdayTarget(b)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 text-xs font-semibold transition-all shrink-0">
+                        <DeleteRoundedIcon sx={{ fontSize: 14 }} />Remove
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50">
+              <InfoRoundedIcon sx={{ fontSize: 14, color: '#94a3b8' }} />
+              <p className="text-[11px] text-slate-400">Birthdays are visible on employee dashboards. Sorted by upcoming date.</p>
+            </div>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════
               HOLIDAY MANAGEMENT
           ══════════════════════════════════════════════════════════════ */}
 
-          {/* Holiday toast */}
           {holidayToast && (
             <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
               <CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />
@@ -493,7 +674,6 @@ console.log("Role:", userProfile?.role)
           )}
 
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            {/* Panel header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center">
@@ -508,33 +688,20 @@ console.log("Role:", userProfile?.role)
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={filterYear}
-                  onChange={e => setFilterYear(Number(e.target.value))}
-                  className="text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:outline-none focus:border-orange-400"
-                >
-                  {[currentYear - 1, currentYear, currentYear + 1].map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
+                <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
+                  className="text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:outline-none focus:border-orange-400">
+                  {[currentYear - 1, currentYear, currentYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
-                <button
-                  onClick={() => { setShowAddHolidayModal(true); setHolidayFormError(''); setHolidayForm(EMPTY_HOLIDAY_FORM) }}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-orange-200"
-                >
+                <button onClick={() => { setShowAddHolidayModal(true); setHolidayFormError(''); setHolidayForm(EMPTY_HOLIDAY_FORM) }}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-orange-200">
                   <AddRoundedIcon sx={{ fontSize: 16 }} />Add Holiday
                 </button>
               </div>
             </div>
-
-            {/* Sunday info banner */}
             <div className="flex items-center gap-3 px-5 py-3 bg-blue-50 border-b border-blue-100">
               <InfoRoundedIcon sx={{ fontSize: 18, color: '#2563eb' }} />
-              <p className="text-xs text-blue-800 font-semibold">
-                Sundays are automatically treated as <span className="font-extrabold">Week Off</span> in attendance calculations — no need to add them here.
-              </p>
+              <p className="text-xs text-blue-800 font-semibold">Sundays are automatically treated as <span className="font-extrabold">Week Off</span> — no need to add them here.</p>
             </div>
-
-            {/* Holiday list */}
             {holidaysLoading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="w-7 h-7 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -544,9 +711,8 @@ console.log("Role:", userProfile?.role)
               <div className="flex flex-col items-center py-16 gap-2">
                 <CelebrationRoundedIcon sx={{ fontSize: 36, color: '#d1d5db' }} />
                 <p className="text-sm font-medium text-slate-400">No holidays configured for {filterYear}</p>
-                <button onClick={() => { setShowAddHolidayModal(true); setHolidayFormError(''); setHolidayForm(EMPTY_HOLIDAY_FORM) }} className="mt-1 text-xs text-orange-500 font-semibold hover:underline">
-                  + Add your first holiday
-                </button>
+                <button onClick={() => { setShowAddHolidayModal(true); setHolidayFormError(''); setHolidayForm(EMPTY_HOLIDAY_FORM) }}
+                  className="mt-1 text-xs text-orange-500 font-semibold hover:underline">+ Add your first holiday</button>
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
@@ -574,7 +740,8 @@ console.log("Role:", userProfile?.role)
                               {d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                             </p>
                           </div>
-                          <button onClick={() => setDeleteHolidayTarget(holiday)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 text-xs font-semibold transition-all shrink-0">
+                          <button onClick={() => setDeleteHolidayTarget(holiday)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 text-xs font-semibold transition-all shrink-0">
                             <DeleteRoundedIcon sx={{ fontSize: 14 }} />Remove
                           </button>
                         </div>
@@ -584,8 +751,6 @@ console.log("Role:", userProfile?.role)
                 ))}
               </div>
             )}
-
-            {/* Legend */}
             <div className="flex items-center gap-4 px-5 py-3 border-t border-slate-100 bg-slate-50 flex-wrap">
               <p className="text-[11px] text-slate-400 font-semibold">Type:</p>
               {(Object.keys(TYPE_META) as Array<keyof typeof TYPE_META>).map(t => (
@@ -598,16 +763,14 @@ console.log("Role:", userProfile?.role)
             </div>
           </div>
 
-          {/* ══════════════════════════════════════════════════════════════
-              QUICK ACTIONS
-          ══════════════════════════════════════════════════════════════ */}
+          {/* Quick Actions */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
             <h2 className="font-extrabold text-slate-900 text-sm mb-4">Quick Actions</h2>
             <div className="space-y-2">
               {[
                 { label: 'Manage Employees', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />,     href: '/admin/employees' },
                 { label: 'View Attendance',  icon: <AccessTimeRoundedIcon sx={{ fontSize: 18 }} />, href: '/admin/attendance' },
-                // { label: 'Approve Leaves',   icon: <EventNoteRoundedIcon sx={{ fontSize: 18 }} />,  href: '/admin/leaves' },
+                { label: 'Approve Leaves',   icon: <EventNoteRoundedIcon sx={{ fontSize: 18 }} />,  href: '/admin/leaves' },
               ].map(a => (
                 <Link key={a.label} href={a.href}>
                   <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-all text-sm font-semibold hover:-translate-y-0.5 active:translate-y-0">
@@ -647,31 +810,27 @@ console.log("Role:", userProfile?.role)
                 </div>
               )}
               {[
-                { label: 'Full Name', key: 'name', type: 'text',  placeholder: 'e.g. Arjun Kumar',    icon: null,                                              required: true },
-                { label: 'Email',     key: 'email', type: 'email', placeholder: 'admin@company.com', icon: <EmailRoundedIcon sx={{ fontSize: 16 }} />, required: true },
+                { label: 'Full Name', key: 'name',  type: 'text',  placeholder: 'e.g. Arjun Kumar',   icon: null,                                              required: true },
+                { label: 'Email',     key: 'email', type: 'email', placeholder: 'admin@company.com',  icon: <EmailRoundedIcon sx={{ fontSize: 16 }} />, required: true },
               ].map(field => (
                 <div key={field.key} className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">{field.label} {field.required && <span className="text-red-500">*</span>}</label>
                   <div className="relative">
                     {field.icon && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{field.icon}</span>}
-                    <input
-                      type={field.type} placeholder={field.placeholder} required={field.required}
+                    <input type={field.type} placeholder={field.placeholder} required={field.required}
                       value={(adminForm as any)[field.key]}
                       onChange={e => setAdminForm(p => ({ ...p, [field.key]: e.target.value }))}
-                      className={`w-full ${field.icon ? 'pl-9' : 'pl-3'} pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-violet-500 focus:outline-none`}
-                    />
+                      className={`w-full ${field.icon ? 'pl-9' : 'pl-3'} pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-violet-500 focus:outline-none`} />
                   </div>
                 </div>
               ))}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Password <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters" required
+                  <input type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters" required
                     value={adminForm.password}
                     onChange={e => setAdminForm(p => ({ ...p, password: e.target.value }))}
-                    className="w-full pl-3 pr-10 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-violet-500 focus:outline-none"
-                  />
+                    className="w-full pl-3 pr-10 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-violet-500 focus:outline-none" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
                     {showPassword ? <VisibilityOffRoundedIcon sx={{ fontSize: 16 }} /> : <VisibilityRoundedIcon sx={{ fontSize: 16 }} />}
                   </button>
@@ -681,19 +840,18 @@ console.log("Role:", userProfile?.role)
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
                 <div className="relative">
                   <PhoneRoundedIcon sx={{ fontSize: 16 }} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    placeholder="+91 9876543210"
-                    value={adminForm.phoneNumber}
+                  <input placeholder="+91 9876543210" value={adminForm.phoneNumber}
                     onChange={e => setAdminForm(p => ({ ...p, phoneNumber: e.target.value }))}
-                    className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-violet-500 focus:outline-none"
-                  />
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-violet-500 focus:outline-none" />
                 </div>
               </div>
               <div className="flex gap-3 pt-1">
-                <button type="submit" disabled={adminSubmitting} className="flex-1 flex items-center justify-center gap-2 h-11 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-violet-200">
+                <button type="submit" disabled={adminSubmitting}
+                  className="flex-1 flex items-center justify-center gap-2 h-11 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-violet-200">
                   {adminSubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Creating…</> : <><ShieldRoundedIcon sx={{ fontSize: 16 }} />Create Admin</>}
                 </button>
-                <button type="button" onClick={() => setShowAddAdminModal(false)} className="h-11 px-5 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="button" onClick={() => setShowAddAdminModal(false)}
+                  className="h-11 px-5 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
               </div>
             </form>
           </div>
@@ -733,10 +891,111 @@ console.log("Role:", userProfile?.role)
               </div>
             )}
             <div className="flex gap-3">
-              <button onClick={handleDeleteAdmin} disabled={deleteAdminSubmitting} className="flex-1 flex items-center justify-center gap-2 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
+              <button onClick={handleDeleteAdmin} disabled={deleteAdminSubmitting}
+                className="flex-1 flex items-center justify-center gap-2 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
                 {deleteAdminSubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Removing…</> : <><DeleteRoundedIcon sx={{ fontSize: 16 }} />Yes, Remove</>}
               </button>
               <button onClick={() => setDeleteAdminTarget(null)} className="flex-1 h-11 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ ADD BIRTHDAY MODAL ════════ */}
+      {showAddBirthdayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center">
+                  <CakeRoundedIcon sx={{ fontSize: 18, color: '#fff' }} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900">Add Birthday</h2>
+                  <p className="text-xs text-slate-400">Shown on employee dashboard each year</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddBirthdayModal(false)} className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400">
+                <CloseRoundedIcon sx={{ fontSize: 20 }} />
+              </button>
+            </div>
+            <form onSubmit={handleAddBirthday} className="p-6 space-y-5">
+              {birthdayFormError && (
+                <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-100 rounded-2xl">
+                  <ErrorRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />
+                  <p className="text-sm text-red-700">{birthdayFormError}</p>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Employee Name <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <PersonRoundedIcon sx={{ fontSize: 16 }} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input type="text" placeholder="e.g. Priya Sharma" required
+                    value={birthdayForm.name}
+                    onChange={e => setBirthdayForm(p => ({ ...p, name: e.target.value }))}
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-pink-400 focus:outline-none" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Date of Birth <span className="text-red-500">*</span></label>
+                <input type="date" required
+                  value={birthdayForm.date}
+                  onChange={e => setBirthdayForm(p => ({ ...p, date: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-pink-400 focus:outline-none" />
+                <p className="text-[11px] text-slate-400">Only the month and day are used — birthdays repeat every year.</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Department <span className="text-slate-400 font-normal normal-case">(optional)</span></label>
+                <div className="relative">
+                  <WorkRoundedIcon sx={{ fontSize: 16 }} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input type="text" placeholder="e.g. Engineering, HR, Marketing…"
+                    value={birthdayForm.department}
+                    onChange={e => setBirthdayForm(p => ({ ...p, department: e.target.value }))}
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-pink-400 focus:outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="submit" disabled={birthdaySubmitting}
+                  className="flex-1 flex items-center justify-center gap-2 h-11 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-pink-200">
+                  {birthdaySubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Adding…</> : <><CakeRoundedIcon sx={{ fontSize: 16 }} />Add Birthday</>}
+                </button>
+                <button type="button" onClick={() => setShowAddBirthdayModal(false)}
+                  className="h-11 px-5 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ DELETE BIRTHDAY CONFIRM ════════ */}
+      {deleteBirthdayTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+              <DeleteRoundedIcon sx={{ fontSize: 28, color: '#dc2626' }} />
+            </div>
+            <div className="text-center">
+              <h2 className="text-xl font-extrabold text-slate-900">Remove Birthday?</h2>
+              <p className="text-sm text-slate-500 mt-1">Remove <span className="font-semibold text-slate-800">{deleteBirthdayTarget.name}</span>'s birthday from the dashboard?</p>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${AVATAR_COLORS[0]} flex items-center justify-center text-white font-bold text-sm shrink-0`}>
+                {deleteBirthdayTarget.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{deleteBirthdayTarget.name}</p>
+                <p className="text-xs text-slate-400">
+                  {deleteBirthdayTarget.date.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}
+                  {deleteBirthdayTarget.department && ` · ${deleteBirthdayTarget.department}`}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={handleDeleteBirthday} disabled={deleteBirthdaySubmitting}
+                className="flex-1 flex items-center justify-center gap-2 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
+                {deleteBirthdaySubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Removing…</> : <><DeleteRoundedIcon sx={{ fontSize: 16 }} />Yes, Remove</>}
+              </button>
+              <button onClick={() => setDeleteBirthdayTarget(null)} className="flex-1 h-11 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
             </div>
           </div>
         </div>
@@ -769,37 +1028,29 @@ console.log("Role:", userProfile?.role)
               )}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Holiday Name <span className="text-red-500">*</span></label>
-                <input
-                  type="text" placeholder="e.g. Pongal, Independence Day…" required
+                <input type="text" placeholder="e.g. Pongal, Independence Day…" required
                   value={holidayForm.name}
                   onChange={e => setHolidayForm(p => ({ ...p, name: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-orange-400 focus:outline-none"
-                />
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-orange-400 focus:outline-none" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Date <span className="text-red-500">*</span></label>
-                <input
-                  type="date" required
-                  value={holidayForm.date}
+                <input type="date" required value={holidayForm.date}
                   onChange={e => setHolidayForm(p => ({ ...p, date: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-orange-400 focus:outline-none"
-                />
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-orange-400 focus:outline-none" />
               </div>
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Holiday Type <span className="text-red-500">*</span></label>
                 <div className="grid grid-cols-3 gap-2">
                   {(Object.keys(TYPE_META) as Array<keyof typeof TYPE_META>).map(t => (
-                    <button
-                      key={t} type="button"
-                      onClick={() => setHolidayForm(p => ({ ...p, type: t }))}
+                    <button key={t} type="button" onClick={() => setHolidayForm(p => ({ ...p, type: t }))}
                       className={`py-2.5 rounded-xl border text-xs font-semibold transition-all ${
                         holidayForm.type === t
                           ? t === 'national' ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-200'
                             : t === 'regional' ? 'bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200'
                             : 'bg-violet-600 text-white border-violet-600 shadow-sm shadow-violet-200'
                           : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
+                      }`}>
                       {TYPE_META[t].label}
                     </button>
                   ))}
@@ -811,10 +1062,12 @@ console.log("Role:", userProfile?.role)
                 </p>
               </div>
               <div className="flex gap-3 pt-1">
-                <button type="submit" disabled={holidaySubmitting} className="flex-1 flex items-center justify-center gap-2 h-11 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-orange-200">
+                <button type="submit" disabled={holidaySubmitting}
+                  className="flex-1 flex items-center justify-center gap-2 h-11 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-orange-200">
                   {holidaySubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Adding…</> : <><AddRoundedIcon sx={{ fontSize: 16 }} />Add Holiday</>}
                 </button>
-                <button type="button" onClick={() => setShowAddHolidayModal(false)} className="h-11 px-5 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
+                <button type="button" onClick={() => setShowAddHolidayModal(false)}
+                  className="h-11 px-5 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>
               </div>
             </form>
           </div>
@@ -848,7 +1101,8 @@ console.log("Role:", userProfile?.role)
               <p className="text-xs text-amber-800 font-semibold">This date will no longer be treated as a holiday in attendance calculations.</p>
             </div>
             <div className="flex gap-3">
-              <button onClick={handleDeleteHoliday} disabled={deleteHolidaySubmitting} className="flex-1 flex items-center justify-center gap-2 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
+              <button onClick={handleDeleteHoliday} disabled={deleteHolidaySubmitting}
+                className="flex-1 flex items-center justify-center gap-2 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
                 {deleteHolidaySubmitting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Removing…</> : <><DeleteRoundedIcon sx={{ fontSize: 16 }} />Yes, Remove</>}
               </button>
               <button onClick={() => setDeleteHolidayTarget(null)} className="flex-1 h-11 border border-slate-200 rounded-xl text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">Cancel</button>

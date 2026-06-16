@@ -23,6 +23,7 @@ import BadgeRoundedIcon           from '@mui/icons-material/BadgeRounded'
 import PhoneRoundedIcon           from '@mui/icons-material/PhoneRounded'
 import ApartmentRoundedIcon       from '@mui/icons-material/ApartmentRounded'
 import WorkRoundedIcon            from '@mui/icons-material/WorkRounded'
+import BeachAccessRoundedIcon       from '@mui/icons-material/BeachAccessRounded'
 import MailRoundedIcon            from '@mui/icons-material/MailRounded'
 
 // ── Sad Person Illustration (for logout modal) ────────────────────────────────
@@ -132,7 +133,8 @@ function EmployeeProfileContent() {
 
   const navItems = [
   { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
-{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },  // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
+{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' }, 
+ { href: '/employee/leaves',           icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
   { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
   { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
 ]

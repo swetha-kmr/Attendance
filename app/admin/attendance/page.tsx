@@ -38,7 +38,6 @@ import CheckCircleRoundedIcon    from '@mui/icons-material/CheckCircleRounded'
 import CancelRoundedIcon         from '@mui/icons-material/CancelRounded'
 import BeachAccessRoundedIcon    from '@mui/icons-material/BeachAccessRounded'
 import HowToRegRoundedIcon       from '@mui/icons-material/HowToRegRounded'
-import SearchRoundedIcon         from '@mui/icons-material/SearchRounded'
 import DownloadRoundedIcon       from '@mui/icons-material/DownloadRounded'
 import FilterListRoundedIcon     from '@mui/icons-material/FilterListRounded'
 import TrendingUpRoundedIcon     from '@mui/icons-material/TrendingUpRounded'
@@ -99,13 +98,6 @@ interface FlatRecord {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * FIX: Get today's local date as YYYY-MM-DD without UTC offset issues.
- * new Date().toISOString() returns UTC — in IST (+5:30) this gives yesterday
- * for any time before 05:30 UTC (i.e. before 11:00 IST the next day is fine,
- * but the safe approach is always use local year/month/day).
- */
 function getLocalDateString(date: Date = new Date()): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -113,14 +105,6 @@ function getLocalDateString(date: Date = new Date()): string {
   return `${y}-${m}-${d}`
 }
 
-/**
- * FIX: Convert a Firestore Timestamp to a local YYYY-MM-DD string.
- * Previously used ts.toDate().toISOString().split('T')[0] which returns the
- * UTC date — in IST (+5:30) a record saved at e.g. 10 Jun 00:30 IST is
- * actually 9 Jun 19:00 UTC, so it was being bucketed under 9 Jun.
- * Using getLocalDateString(ts.toDate()) reads the local wall-clock date
- * so Firestore timestamps always map to the correct IST calendar day.
- */
 function toDateString(ts: Timestamp): string {
   try { return getLocalDateString(ts.toDate()) } catch { return '' }
 }
@@ -147,7 +131,6 @@ function isSundayStr(dateStr: string): boolean {
   return new Date(dateStr + 'T00:00:00').getDay() === 0
 }
 function sameDayStr(a: Date, dateStr: string): boolean {
-  // FIX: compare using local date parts, not UTC
   const b = new Date(dateStr + 'T00:00:00')
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
@@ -390,15 +373,12 @@ function AttendanceContent() {
   const [saveMsg,     setSaveMsg]     = useState('')
   const [saveErrMsg,  setSaveErrMsg]  = useState('')
 
-  // FIX: Use getLocalDateString() instead of new Date().toISOString().split('T')[0]
-  // toISOString() returns UTC — in IST (+5:30) this gives yesterday's date before
-  // 05:30 UTC (i.e. the entire afternoon/evening in IST reads as the previous UTC day).
   const today = getLocalDateString()
 
   const [startDate, setStartDate] = useState(today)
   const [endDate,   setEndDate]   = useState(today)
 
-  const [searchTerm,   setSearchTerm]   = useState('')
+  const [empFilter,    setEmpFilter]    = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [deptFilter,   setDeptFilter]   = useState('all')
   const [currentPage,  setCurrentPage]  = useState(1)
@@ -424,7 +404,7 @@ function AttendanceContent() {
     fetchHolidaysByRange(start, end).then(setHolidays)
   }, [startDate, endDate])
 
-  useEffect(() => { setCurrentPage(1) }, [startDate, endDate, searchTerm, statusFilter, deptFilter])
+  useEffect(() => { setCurrentPage(1) }, [startDate, endDate, empFilter, statusFilter, deptFilter])
 
   // ── Build flat records ────────────────────────────────────────────────────
   const records: FlatRecord[] = useMemo(() => {
@@ -434,13 +414,10 @@ function AttendanceContent() {
     const cursor   = new Date(startDate + 'T00:00:00')
     const rangeEnd = new Date(endDate   + 'T00:00:00')
     while (cursor <= rangeEnd) {
-      // FIX: use getLocalDateString here too so date generation is consistent
       allDates.push(getLocalDateString(cursor))
       cursor.setDate(cursor.getDate() + 1)
     }
 
-    // Attendance map: uid_date → record
-    // toDateString() now uses local date so keys match allDates entries
     const attMap = new Map<string, AttendanceRecord>()
     attendance
       .filter(a => { const d = toDateString(a.date); return d >= startDate && d <= endDate })
@@ -453,7 +430,6 @@ function AttendanceContent() {
         try { if (a.date.toDate().getTime() > ex.date.toDate().getTime()) attMap.set(key, a) } catch { attMap.set(key, a) }
       })
 
-    // Leave set: uid_date
     const onLeaveKeys = new Set<string>()
     leaves.filter(l => l.status === 'approved').forEach(l => {
       const uid = getLeaveUid(l)
@@ -501,14 +477,13 @@ function AttendanceContent() {
 
   // ── Filter ────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
     return records.filter(r => {
-      const matchesSearch = term === '' || r.name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term)
+      const matchesEmp    = empFilter    === 'all' || r.uid === empFilter
       const matchesStatus = statusFilter === 'all' || r.status.trim().toLowerCase() === statusFilter.trim().toLowerCase()
       const matchesDept   = deptFilter   === 'all' || r.department.trim().toLowerCase() === deptFilter.trim().toLowerCase()
-      return matchesSearch && matchesStatus && matchesDept
+      return matchesEmp && matchesStatus && matchesDept
     })
-  }, [records, searchTerm, statusFilter, deptFilter])
+  }, [records, empFilter, statusFilter, deptFilter])
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -529,8 +504,8 @@ function AttendanceContent() {
     ? `${new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} → ${new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
     : new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-  const activeFilterCount = [searchTerm.trim() !== '', statusFilter !== 'all', deptFilter !== 'all'].filter(Boolean).length
-  const handleClearFilters = () => { setSearchTerm(''); setStatusFilter('all'); setDeptFilter('all') }
+  const activeFilterCount = [empFilter !== 'all', statusFilter !== 'all', deptFilter !== 'all'].filter(Boolean).length
+  const handleClearFilters = () => { setEmpFilter('all'); setStatusFilter('all'); setDeptFilter('all') }
   const handleLogout = async () => { await signOut(); router.push('/') }
 
   // ── Save edited record ────────────────────────────────────────────────────
@@ -616,12 +591,11 @@ function AttendanceContent() {
     { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',    active: false },
     { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Employees',    active: false },
     { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Attendance',   active: true  },
+    { href: '/admin/leaves',       icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Leave Requests', active: false },
     { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Daily Status', active: false },
     { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Settings',     active: false },
   ]
 
-  // FIX: Quick range buttons also use getLocalDateString() so "Today" always
-  // resolves to the correct IST calendar date, not the UTC date.
   const quickRanges = [
     { label: 'Today',        start: today, end: today },
     {
@@ -645,6 +619,14 @@ function AttendanceContent() {
       end: today,
     },
   ]
+
+  // ── Sorted employee list for dropdown ─────────────────────────────────────
+  const employeeOptions = useMemo(() =>
+    users
+      .filter(u => u.role === 'employee' && u.status === 'active')
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [users]
+  )
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
@@ -774,31 +756,35 @@ function AttendanceContent() {
               )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Start Date */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Start Date</label>
                 <input type="date" value={startDate} max={endDate}
                   onChange={e => { setStartDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value) }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none" />
               </div>
+              {/* End Date */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">End Date</label>
                 <input type="date" value={endDate} min={startDate} max={today}
                   onChange={e => setEndDate(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none" />
               </div>
+              {/* Employee Dropdown */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Search Employee</label>
-                <div className="relative">
-                  <SearchRoundedIcon sx={{ fontSize: 16 }} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input type="text" placeholder="Name or email…" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                    className={`w-full pl-9 pr-8 py-2 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none transition-colors ${searchTerm ? 'border-blue-400' : 'border-slate-200 focus:border-blue-500'}`} />
-                  {searchTerm && (
-                    <button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                      <CloseRoundedIcon sx={{ fontSize: 14 }} />
-                    </button>
-                  )}
-                </div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Employee</label>
+                <select
+                  value={empFilter}
+                  onChange={e => setEmpFilter(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none transition-colors ${empFilter !== 'all' ? 'border-blue-400' : 'border-slate-200 focus:border-blue-500'}`}
+                >
+                  <option value="all">All Employees</option>
+                  {employeeOptions.map(u => (
+                    <option key={u.uid} value={u.uid}>{u.name}</option>
+                  ))}
+                </select>
               </div>
+              {/* Status */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Status</label>
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
@@ -811,6 +797,7 @@ function AttendanceContent() {
                   <option value="Weekly Off">Weekly Off</option>
                 </select>
               </div>
+              {/* Department */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Department</label>
                 <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
@@ -871,7 +858,7 @@ function AttendanceContent() {
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-slate-300">
-                <SearchRoundedIcon sx={{ fontSize: 40 }} />
+                <PeopleRoundedIcon sx={{ fontSize: 40 }} />
                 <p className="text-sm mt-2 font-medium text-slate-400">No records found</p>
                 {activeFilterCount > 0 && (
                   <button onClick={handleClearFilters} className="mt-3 px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">

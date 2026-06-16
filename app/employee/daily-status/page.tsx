@@ -10,12 +10,12 @@ import {
   collection, addDoc, updateDoc, doc,
   query, where, orderBy, getDocs,
 } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { db, DEV } from '@/lib/firebase'
 
 import DashboardRoundedIcon     from '@mui/icons-material/DashboardRounded'
 import AccessTimeRoundedIcon    from '@mui/icons-material/AccessTimeRounded'
 import EventNoteRoundedIcon     from '@mui/icons-material/EventNoteRounded'
-import AccountCircleRoundedIcon from '@mui/icons-material/AccountCircleRounded'
+import BeachAccessRoundedIcon   from '@mui/icons-material/BeachAccessRounded'
 import LogoutRoundedIcon        from '@mui/icons-material/LogoutRounded'
 import MenuRoundedIcon          from '@mui/icons-material/MenuRounded'
 import CloseRoundedIcon         from '@mui/icons-material/CloseRounded'
@@ -34,6 +34,9 @@ import LockRoundedIcon          from '@mui/icons-material/LockRounded'
 import PersonRoundedIcon        from '@mui/icons-material/PersonRounded'
 import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded'
 import DoNotDisturbRoundedIcon  from '@mui/icons-material/DoNotDisturbRounded'
+
+// ── Dev/Prod collection prefix ────────────────────────────────────────────────
+const c = (name: string) => DEV ? `dev_${name}` : name
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface DailyStatusReport {
@@ -63,7 +66,7 @@ async function fetchReportByDate(userId: string, dateStr: string): Promise<Daily
   const start = new Date(dateStr + 'T00:00:00')
   const end   = new Date(dateStr + 'T23:59:59')
   const q = query(
-    collection(db, 'dailyStatus'),
+    collection(db, c('dailyStatus')),
     where('userId', '==', userId),
     where('date', '>=', Timestamp.fromDate(start)),
     where('date', '<=', Timestamp.fromDate(end)),
@@ -77,7 +80,7 @@ async function fetchReportByDate(userId: string, dateStr: string): Promise<Daily
 
 async function fetchRecentReports(userId: string): Promise<DailyStatusReport[]> {
   const q = query(
-    collection(db, 'dailyStatus'),
+    collection(db, c('dailyStatus')),
     where('userId', '==', userId),
     orderBy('date', 'desc'),
   )
@@ -92,7 +95,7 @@ async function saveReport(
   try {
     const now = Timestamp.now()
     if (existingId) {
-      await updateDoc(doc(db, 'dailyStatus', existingId), {
+      await updateDoc(doc(db, c('dailyStatus'), existingId), {
         taskTitle:    data.taskTitle,
         workSummary:  data.workSummary,
         tomorrowPlan: data.tomorrowPlan,
@@ -101,7 +104,7 @@ async function saveReport(
       })
       return { ok: true, id: existingId }
     }
-    const ref = await addDoc(collection(db, 'dailyStatus'), { ...data, createdAt: now, updatedAt: now })
+    const ref = await addDoc(collection(db, c('dailyStatus')), { ...data, createdAt: now, updatedAt: now })
     return { ok: true, id: ref.id }
   } catch (err: any) {
     return { ok: false, error: err?.message ?? 'Save failed' }
@@ -205,8 +208,6 @@ function LogoutBlockModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── HR Blocked Screen ─────────────────────────────────────────────────────────
-// Shown when the logged-in employee belongs to the HR department
 function HRBlockedScreen() {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
@@ -221,13 +222,6 @@ function HRBlockedScreen() {
           Daily Status is not applicable for the <strong className="text-slate-700">HR department</strong>.
           This section is only available to employees.
         </p>
-        {/* <div className="mt-5 p-4 bg-amber-50 border border-amber-100 rounded-2xl text-left">
-          <p className="text-xs font-bold text-amber-800 mb-2">Why is this hidden?</p>
-          <p className="text-xs text-amber-700 leading-relaxed">
-            HR employees are excluded from the daily status workflow as configured by your administrator.
-            Please contact your admin if you think this is a mistake.
-          </p>
-        </div> */}
       </div>
     </div>
   )
@@ -257,7 +251,6 @@ function DailyStatusContent() {
   const [todaySubmitted,  setTodaySubmitted]  = useState(false)
   const [showLogoutBlock, setShowLogoutBlock] = useState(false)
 
-  // ── Check if this user is HR ──────────────────────────────────────────────
   const isHREmployee =
     userProfile?.department === 'HR' || userProfile?.showDailyStatus === false
 
@@ -266,7 +259,6 @@ function DailyStatusContent() {
   const canEdit   = !hasReport || isEditing
   const overLimit = wordCount(workSummary) > MAX_WORDS
 
-  // Load report for selected date — skip if HR
   useEffect(() => {
     if (!userProfile?.uid || isHREmployee) return
     setLoading(true)
@@ -288,7 +280,6 @@ function DailyStatusContent() {
     })
   }, [userProfile?.uid, date, isHREmployee])
 
-  // Load recent reports — skip if HR
   useEffect(() => {
     if (!userProfile?.uid || isHREmployee) return
     fetchRecentReports(userProfile.uid).then(r => {
@@ -297,7 +288,6 @@ function DailyStatusContent() {
     })
   }, [userProfile?.uid, saveMsg, isHREmployee])
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!userProfile?.uid) return
     if (!taskTitle.trim())   { setSaveErrMsg('Task title is required.');          setTimeout(() => setSaveErrMsg(''), 4000); return }
@@ -340,7 +330,6 @@ function DailyStatusContent() {
   }
 
   const handleLogout = async () => {
-    // HR employees can logout freely — no daily status required
     if (!isHREmployee && !todaySubmitted) {
       setDate(today)
       setShowLogoutBlock(true)
@@ -350,24 +339,20 @@ function DailyStatusContent() {
     router.push('/')
   }
 
-  // ── Nav items ─────────────────────────────────────────────────────────────
   const navItems = [
     { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Dashboard'        },
     { href: '/employee/MyProfile/',       icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,           label: 'My Profile'       },
+    { href: '/employee/leaves',           icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Leave Requests'   },
     { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Holiday Calendar' },
     { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,       label: 'Daily Status'     },
   ]
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
       {showLogoutBlock && <LogoutBlockModal onClose={() => setShowLogoutBlock(false)} />}
 
-      {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-
-        {/* Logo */}
         <div className="px-5 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-md shadow-blue-200">
@@ -379,22 +364,17 @@ function DailyStatusContent() {
             </div>
           </div>
         </div>
-
-        {/* Nav */}
         <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
           {navItems.map((item) => {
             const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
             return (
-              <Link
-                key={item.href}
-                href={item.href}
+              <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
+                }`}>
                 <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
                 {item.label}
                 {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
@@ -402,7 +382,6 @@ function DailyStatusContent() {
             )
           })}
 
-          {/* Recent Reports — hidden for HR */}
           {!isHREmployee && (
             <div className="pt-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-2 flex items-center gap-1.5">
@@ -417,14 +396,8 @@ function DailyStatusContent() {
               ) : (
                 <div className="space-y-1.5 px-1">
                   {recentReports.map(r => (
-                    <RecentReportCard
-                      key={r.id}
-                      report={r}
-                      onClick={() => {
-                        const d = r.date.toDate()
-                        setDate(toLocalDateStr(d))
-                      }}
-                    />
+                    <RecentReportCard key={r.id} report={r}
+                      onClick={() => { const d = r.date.toDate(); setDate(toLocalDateStr(d)) }} />
                   ))}
                 </div>
               )}
@@ -432,7 +405,6 @@ function DailyStatusContent() {
           )}
         </nav>
 
-        {/* User + Logout */}
         <div className="px-3 py-4 border-t border-slate-100 space-y-3">
           <div className="px-3 py-3 bg-slate-50 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
@@ -443,15 +415,10 @@ function DailyStatusContent() {
               <p className="text-[11px] text-slate-400 truncate">{userProfile?.email}</p>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
+          <button onClick={handleLogout}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors shadow-sm ${
-              isHREmployee || todaySubmitted
-                ? 'bg-rose-500 hover:bg-rose-600'
-                : 'bg-slate-400 hover:bg-amber-500'
-            }`}
-            title={!isHREmployee && !todaySubmitted ? "Submit today's daily status to unlock logout" : ''}
-          >
+              isHREmployee || todaySubmitted ? 'bg-rose-500 hover:bg-rose-600' : 'bg-slate-400 hover:bg-amber-500'
+            }`}>
             {isHREmployee || todaySubmitted
               ? <LogoutRoundedIcon sx={{ fontSize: 18 }} />
               : <LockRoundedIcon sx={{ fontSize: 18 }} />}
@@ -464,15 +431,9 @@ function DailyStatusContent() {
         <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* ── Main content ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Topbar */}
         <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-4 sticky top-0 z-20">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
-          >
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
             {sidebarOpen ? <CloseRoundedIcon /> : <MenuRoundedIcon />}
           </button>
           <div className="flex-1">
@@ -481,7 +442,6 @@ function DailyStatusContent() {
               <CalendarTodayRoundedIcon sx={{ fontSize: 12 }} />Dashboard / Daily Status Update
             </p>
           </div>
-          {/* Today submitted badge — only for non-HR */}
           {isToday && !isHREmployee && (
             <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold ${
               todaySubmitted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
@@ -493,23 +453,18 @@ function DailyStatusContent() {
           )}
         </header>
 
-        {/* ── HR blocked screen ── */}
         {isHREmployee ? (
           <HRBlockedScreen />
         ) : (
-          /* ── Normal content for non-HR employees ── */
           <main className="flex-1 overflow-y-auto p-6">
             <div className="max-w-3xl mx-auto space-y-5">
 
-              {/* Logout warning banner */}
               {!todaySubmitted && isToday && (
                 <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
                   <LockRoundedIcon sx={{ fontSize: 18, color: '#d97706', flexShrink: 0, mt: '1px' }} />
                   <div>
                     <p className="text-sm font-bold text-amber-800">Daily Status Required to Logout</p>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      Submit today's work summary below before you can sign out.
-                    </p>
+                    <p className="text-xs text-amber-700 mt-0.5">Submit today's work summary below before you can sign out.</p>
                   </div>
                 </div>
               )}
@@ -525,7 +480,6 @@ function DailyStatusContent() {
                 </div>
               )}
 
-              {/* Form Card */}
               <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
                   <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -533,9 +487,7 @@ function DailyStatusContent() {
                   </div>
                   <div>
                     <h2 className="font-extrabold text-slate-900 text-sm">Update Your Daily Work Status</h2>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Record your work summary, plans, and any blockers
-                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Record your work summary, plans, and any blockers</p>
                   </div>
                   {hasReport && !isEditing && (
                     <span className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">
@@ -551,25 +503,14 @@ function DailyStatusContent() {
                   </div>
                 ) : (
                   <div className="p-6 space-y-5">
-
-                    {/* Date + Task Title row */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                          Date
-                        </label>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Date</label>
                         <div className="relative">
-                          <CalendarTodayRoundedIcon
-                            sx={{ fontSize: 14 }}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                          />
-                          <input
-                            type="date"
-                            value={date}
-                            max={today}
+                          <CalendarTodayRoundedIcon sx={{ fontSize: 14 }} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          <input type="date" value={date} max={today}
                             onChange={e => setDate(e.target.value)}
-                            className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none font-semibold"
-                          />
+                            className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none font-semibold" />
                         </div>
                         {isToday && (
                           <p className="text-[10px] text-blue-500 font-bold mt-1 flex items-center gap-1">
@@ -578,21 +519,13 @@ function DailyStatusContent() {
                         )}
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                          Task Title
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Holiday Calendar Development"
-                          value={taskTitle}
-                          onChange={e => setTaskTitle(e.target.value)}
-                          disabled={!canEdit}
-                          className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Task Title</label>
+                        <input type="text" placeholder="e.g. Holiday Calendar Development"
+                          value={taskTitle} onChange={e => setTaskTitle(e.target.value)} disabled={!canEdit}
+                          className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed" />
                       </div>
                     </div>
 
-                    {/* Work Summary */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -601,16 +534,11 @@ function DailyStatusContent() {
                         </label>
                         <WordCounter text={workSummary} max={MAX_WORDS} />
                       </div>
-                      <textarea
-                        rows={6}
-                        placeholder="Describe what you worked on today…"
-                        value={workSummary}
-                        onChange={e => setWorkSummary(e.target.value)}
-                        disabled={!canEdit}
+                      <textarea rows={6} placeholder="Describe what you worked on today…"
+                        value={workSummary} onChange={e => setWorkSummary(e.target.value)} disabled={!canEdit}
                         className={`w-full px-3 py-2.5 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed transition-colors ${
                           overLimit ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-blue-500'
-                        }`}
-                      />
+                        }`} />
                       {overLimit && (
                         <p className="text-[11px] text-red-500 font-semibold mt-1 flex items-center gap-1">
                           <WarningRoundedIcon sx={{ fontSize: 12 }} />Exceeds {MAX_WORDS} word limit
@@ -618,55 +546,37 @@ function DailyStatusContent() {
                       )}
                     </div>
 
-                    {/* Tomorrow's Plan */}
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Tomorrow's Plan
-                      </label>
-                      <textarea
-                        rows={3}
-                        placeholder="What do you plan to work on tomorrow?"
-                        value={tomorrowPlan}
-                        onChange={e => setTomorrowPlan(e.target.value)}
-                        disabled={!canEdit}
-                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
-                      />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tomorrow's Plan</label>
+                      <textarea rows={3} placeholder="What do you plan to work on tomorrow?"
+                        value={tomorrowPlan} onChange={e => setTomorrowPlan(e.target.value)} disabled={!canEdit}
+                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none placeholder:text-slate-300 resize-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed" />
                     </div>
 
-                    {/* Action buttons */}
                     <div className="flex items-center justify-end gap-3 pt-2">
                       {hasReport && !isEditing ? (
-                        <button
-                          onClick={() => setIsEditing(true)}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200"
-                        >
+                        <button onClick={() => setIsEditing(true)}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200">
                           <EditNoteRoundedIcon sx={{ fontSize: 16 }} />Edit Update
                         </button>
                       ) : (
                         <>
-                          <button
-                            onClick={handleCancel}
-                            className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-semibold transition-colors"
-                          >
+                          <button onClick={handleCancel}
+                            className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-sm font-semibold transition-colors">
                             Cancel
                           </button>
-                          <button
-                            onClick={handleSave}
-                            disabled={saving || overLimit}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200"
-                          >
+                          <button onClick={handleSave} disabled={saving || overLimit}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-blue-200">
                             <SaveRoundedIcon sx={{ fontSize: 16 }} />
                             {saving ? 'Saving…' : 'Save Update'}
                           </button>
                         </>
                       )}
                     </div>
-
                   </div>
                 )}
               </div>
 
-              {/* Info tip */}
               <div className="flex items-start gap-3 px-4 py-3.5 bg-blue-50 border border-blue-100 rounded-2xl">
                 <InfoOutlinedIcon sx={{ fontSize: 16, color: '#7c3aed', flexShrink: 0, mt: '1px' }} />
                 <p className="text-[12px] text-blue-700 font-medium leading-relaxed">

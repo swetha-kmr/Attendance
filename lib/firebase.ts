@@ -16,13 +16,15 @@ const app = getApps().length === 0
   ? initializeApp(firebaseConfig)
   : getApp()
 
-// Secondary App (for creating employees)
+// Secondary App (for creating employees without affecting main auth session)
 const secondaryApp =
-  getApps().find(app => app.name === 'Secondary') ||
+  getApps().find(a => a.name === 'Secondary') ||
   initializeApp(firebaseConfig, 'Secondary')
 
 export const auth = getAuth(app)
 export const secondaryAuth = getAuth(secondaryApp)
 export const db = getFirestore(app)
 
+
+export const DEV = process.env.NEXT_PUBLIC_ENV !== 'production'
 export default app

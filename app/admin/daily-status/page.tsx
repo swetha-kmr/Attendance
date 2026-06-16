@@ -6,10 +6,8 @@ import { ProtectedRoute } from '@/lib/protected-route'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Timestamp } from 'firebase/firestore'
-import {
-  collection, query, orderBy, getDocs,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { collection, query, orderBy, getDocs } from 'firebase/firestore'
+import { db, DEV } from '@/lib/firebase'
 
 import DashboardRoundedIcon      from '@mui/icons-material/DashboardRounded'
 import PeopleRoundedIcon         from '@mui/icons-material/PeopleRounded'
@@ -22,6 +20,7 @@ import CloseRoundedIcon          from '@mui/icons-material/CloseRounded'
 import FingerprintRoundedIcon    from '@mui/icons-material/FingerprintRounded'
 import AssignmentRoundedIcon     from '@mui/icons-material/AssignmentRounded'
 import SearchRoundedIcon         from '@mui/icons-material/SearchRounded'
+import BeachAccessRoundedIcon    from '@mui/icons-material/BeachAccessRounded'
 import VisibilityRoundedIcon     from '@mui/icons-material/VisibilityRounded'
 import DateRangeRoundedIcon      from '@mui/icons-material/DateRangeRounded'
 import FilterListRoundedIcon     from '@mui/icons-material/FilterListRounded'
@@ -35,6 +34,10 @@ import LastPageRoundedIcon       from '@mui/icons-material/LastPageRounded'
 import BlockRoundedIcon          from '@mui/icons-material/BlockRounded'
 import TrendingUpRoundedIcon     from '@mui/icons-material/TrendingUpRounded'
 import RefreshRoundedIcon        from '@mui/icons-material/RefreshRounded'
+import PersonRoundedIcon         from '@mui/icons-material/PersonRounded'
+
+// ── Dev/Prod collection prefix ────────────────────────────────────────────────
+const c = (name: string) => DEV ? `dev_${name}` : name
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface DailyStatusReport {
@@ -58,21 +61,16 @@ function formatTime(ts?: Timestamp): string {
   if (!ts) return '—'
   try { return ts.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) } catch { return '—' }
 }
-
-// ✅ LOCAL date — avoids UTC off-by-one in IST (+5:30)
 function toDateStr(ts: Timestamp): string {
   try {
     const d = ts.toDate()
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
   } catch { return '' }
 }
-
-// ✅ LOCAL today — never use toISOString() which is UTC
 function localToday(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
-
 function wordCount(text: string): number {
   return text?.trim() ? text.trim().split(/\s+/).length : 0
 }
@@ -82,14 +80,10 @@ function getInitials(name: string): string {
 
 const DEPARTMENTS       = ['Engineering', 'HR', 'Finance', 'Marketing', 'Operations', 'Design']
 const PAGE_SIZE_OPTIONS = [8, 10, 20, 50]
-
 const AVATAR_COLORS = [
-  'from-blue-500 to-blue-600',
-  'from-violet-500 to-violet-600',
-  'from-emerald-500 to-emerald-600',
-  'from-rose-500 to-rose-600',
-  'from-amber-500 to-amber-600',
-  'from-cyan-500 to-cyan-600',
+  'from-blue-500 to-blue-600', 'from-violet-500 to-violet-600',
+  'from-emerald-500 to-emerald-600', 'from-rose-500 to-rose-600',
+  'from-amber-500 to-amber-600', 'from-cyan-500 to-cyan-600',
 ]
 function avatarColor(name: string): string {
   let h = 0
@@ -131,39 +125,22 @@ function Pagination({ currentPage, totalPages, pageSize, totalItems, onPageChang
         <p className="text-xs text-slate-500 font-medium">
           Showing <span className="font-bold text-slate-700">{start}–{end}</span> of <span className="font-bold text-slate-700">{totalItems}</span>
         </p>
-        <select
-          value={pageSize}
-          onChange={e => { onPageSizeChange(Number(e.target.value)); onPageChange(1) }}
-          className="px-2 py-1 border border-slate-200 rounded-lg bg-white text-slate-700 text-xs font-semibold focus:border-blue-500 focus:outline-none"
-        >
+        <select value={pageSize} onChange={e => { onPageSizeChange(Number(e.target.value)); onPageChange(1) }}
+          className="px-2 py-1 border border-slate-200 rounded-lg bg-white text-slate-700 text-xs font-semibold focus:border-blue-500 focus:outline-none">
           {PAGE_SIZE_OPTIONS.map(s => <option key={s} value={s}>{s} / page</option>)}
         </select>
       </div>
       <div className="flex items-center gap-1">
-        <button onClick={() => onPageChange(1)} disabled={currentPage === 1}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed">
-          <FirstPageRoundedIcon sx={{ fontSize: 16 }} />
-        </button>
-        <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed">
-          <ChevronLeftRoundedIcon sx={{ fontSize: 16 }} />
-        </button>
+        <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"><FirstPageRoundedIcon sx={{ fontSize: 16 }} /></button>
+        <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"><ChevronLeftRoundedIcon sx={{ fontSize: 16 }} /></button>
         {pages().map(p => (
           <button key={p} onClick={() => onPageChange(p)}
-            className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold transition-all ${
-              p === currentPage ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200'
-            }`}>
+            className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold transition-all ${p === currentPage ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>
             {p}
           </button>
         ))}
-        <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages || totalPages === 0}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed">
-          <ChevronRightRoundedIcon sx={{ fontSize: 16 }} />
-        </button>
-        <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages || totalPages === 0}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed">
-          <LastPageRoundedIcon sx={{ fontSize: 16 }} />
-        </button>
+        <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages || totalPages === 0} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"><ChevronRightRoundedIcon sx={{ fontSize: 16 }} /></button>
+        <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages || totalPages === 0} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"><LastPageRoundedIcon sx={{ fontSize: 16 }} /></button>
       </div>
     </div>
   )
@@ -210,23 +187,9 @@ function ViewModal({ report, onClose }: { report: DailyStatusReport | null; onCl
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tomorrow's Plan</p>
             <p className="text-sm text-slate-700 bg-slate-50 px-3 py-3 rounded-xl border border-slate-100 leading-relaxed whitespace-pre-wrap">{report.tomorrowPlan || '—'}</p>
           </div>
-          {/* <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-              <BlockRoundedIcon sx={{ fontSize: 11 }} />Blockers / Issues
-            </p>
-            <p className={`text-sm px-3 py-2.5 rounded-xl border leading-relaxed ${
-              report.blockers && report.blockers.toLowerCase() !== 'no blockers at the moment.'
-                ? 'text-amber-700 bg-amber-50 border-amber-100'
-                : 'text-slate-500 bg-slate-50 border-slate-100'
-            }`}>
-              {report.blockers || 'No blockers'}
-            </p>
-          </div> */}
         </div>
         <div className="px-6 pb-6">
-          <button onClick={onClose} className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors">
-            Close
-          </button>
+          <button onClick={onClose} className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors">Close</button>
         </div>
       </div>
     </div>
@@ -237,41 +200,36 @@ function ViewModal({ report, onClose }: { report: DailyStatusReport | null; onCl
 function AdminDailyStatusContent() {
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
+  const today  = localToday()
 
-  const today = localToday()
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [reports,     setReports]     = useState<DailyStatusReport[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [fetchError,  setFetchError]  = useState('')
+  const [viewReport,  setViewReport]  = useState<DailyStatusReport | null>(null)
 
-  const [sidebarOpen,  setSidebarOpen]  = useState(true)
-  const [reports,      setReports]      = useState<DailyStatusReport[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [fetchError,   setFetchError]   = useState('')
-  const [viewReport,   setViewReport]   = useState<DailyStatusReport | null>(null)
-
-  // ✅ FIX: Default start date = 30 days ago so data is visible immediately.
-  // Admin can narrow down using filters. No data is pre-filtered away on mount.
   const thirtyDaysAgo = (() => {
     const d = new Date(); d.setDate(d.getDate() - 29)
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
   })()
 
-  const [startDate,  setStartDate]  = useState(thirtyDaysAgo)
-  const [endDate,    setEndDate]    = useState(today)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [deptFilter, setDeptFilter] = useState('all')
-  const [currentPage,setCurrentPage]= useState(1)
-  const [pageSize,   setPageSize]   = useState(8)
+  const [startDate,   setStartDate]   = useState(thirtyDaysAgo)
+  const [endDate,     setEndDate]     = useState(today)
+  const [searchTerm,  setSearchTerm]  = useState('')
+  const [deptFilter,  setDeptFilter]  = useState('all')
+  // ── NEW: employee dropdown filter ─────────────────────────────────────────
+  const [empFilter,   setEmpFilter]   = useState('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize,    setPageSize]    = useState(8)
 
-  // ── ✅ KEY FIX: Use getDocs instead of onSnapshot ─────────────────────────
-  // onSnapshot can silently fail when Firestore security rules block reads
-  // for some documents. getDocs surfaces the error clearly so we can debug.
   const fetchAllReports = async () => {
     setLoading(true)
     setFetchError('')
     try {
-      const q    = query(collection(db, 'dailyStatus'), orderBy('date', 'desc'))
+      const q    = query(collection(db, c('dailyStatus')), orderBy('date', 'desc'))
       const snap = await getDocs(q)
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as DailyStatusReport))
       setReports(data)
-      console.log(`[AdminDailyStatus] Fetched ${data.length} total reports`)
     } catch (err: any) {
       console.error('[AdminDailyStatus] Firestore fetch error:', err)
       setFetchError(err?.message ?? 'Failed to load reports. Check Firestore rules.')
@@ -281,60 +239,64 @@ function AdminDailyStatusContent() {
   }
 
   useEffect(() => { fetchAllReports() }, [])
+  // ── reset page on any filter change including empFilter ───────────────────
+  useEffect(() => { setCurrentPage(1) }, [startDate, endDate, searchTerm, deptFilter, empFilter])
 
-  useEffect(() => { setCurrentPage(1) }, [startDate, endDate, searchTerm, deptFilter])
+  // ── Build unique employee list from all employee reports ──────────────────
+  const employeeOptions = useMemo(() => {
+    const map = new Map<string, string>() // userId → userName
+    reports.forEach(r => {
+      if (r.userId !== userProfile?.uid && r.userId && r.userName) {
+        map.set(r.userId, r.userName)
+      }
+    })
+    return Array.from(map.entries())
+      .map(([uid, name]) => ({ uid, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [reports, userProfile?.uid])
 
-  // ── ✅ Filter: exclude only the admin's own userId ────────────────────────
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     return reports.filter(r => {
-      // Exclude admin's own reports
       if (r.userId === userProfile?.uid) return false
-
       const d           = toDateStr(r.date)
       const inRange     = d >= startDate && d <= endDate
       const matchSearch = term === '' ||
         r.userName?.toLowerCase().includes(term) ||
         r.taskTitle?.toLowerCase().includes(term)
-
-      return inRange && matchSearch
+      // ── NEW: employee dropdown filter ─────────────────────────────────────
+      const matchEmp    = empFilter === 'all' || r.userId === empFilter
+      return inRange && matchSearch && matchEmp
     })
-  }, [reports, startDate, endDate, searchTerm, userProfile?.uid])
+  }, [reports, startDate, endDate, searchTerm, userProfile?.uid, empFilter])
 
-  const totalPages     = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const paginated      = useMemo(() =>
-    filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-    [filtered, currentPage, pageSize]
-  )
-
+  const totalPages      = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const paginated       = useMemo(() => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize), [filtered, currentPage, pageSize])
   const employeeReports = reports.filter(r => r.userId !== userProfile?.uid)
   const todayReports    = employeeReports.filter(r => toDateStr(r.date) === today).length
   const uniqueEmployees = new Set(filtered.map(r => r.userId)).size
-  const avgWords        = filtered.length > 0
-    ? Math.round(filtered.reduce((s, r) => s + wordCount(r.workSummary), 0) / filtered.length) : 0
+  const avgWords        = filtered.length > 0 ? Math.round(filtered.reduce((s, r) => s + wordCount(r.workSummary), 0) / filtered.length) : 0
 
-  const activeFilterCount  = [searchTerm.trim() !== '', deptFilter !== 'all'].filter(Boolean).length
-  const handleClearFilters = () => { setSearchTerm(''); setDeptFilter('all') }
+  // ── updated: include empFilter in active count & clear ────────────────────
+  const activeFilterCount  = [searchTerm.trim() !== '', deptFilter !== 'all', empFilter !== 'all'].filter(Boolean).length
+  const handleClearFilters = () => { setSearchTerm(''); setDeptFilter('all'); setEmpFilter('all') }
   const handleLogout       = async () => { await signOut(); router.push('/') }
-
-  const isRange = startDate !== endDate
+  const isRange            = startDate !== endDate
 
   const navItems = [
     { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Dashboard'      },
     { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees'      },
     { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance'     },
-    // { href: '/admin/leaves',       icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests' },
+    { href: '/admin/leaves',       icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests' },
     { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Daily Status'   },
     { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings'       },
   ]
-  const activeHref = '/admin/daily-status'
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
       <ViewModal report={viewReport} onClose={() => setViewReport(null)} />
 
-      {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="px-5 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -350,13 +312,11 @@ function AdminDailyStatusContent() {
         <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
           {navItems.map(item => {
-            const isActive = item.href === activeHref
+            const isActive = item.href === '/admin/daily-status'
             return (
               <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}>
                 <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
                 {item.label}
@@ -386,7 +346,6 @@ function AdminDailyStatusContent() {
         <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-4 sticky top-0 z-20">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
@@ -398,58 +357,36 @@ function AdminDailyStatusContent() {
               <AssignmentRoundedIcon sx={{ fontSize: 12 }} />Dashboard / Daily Status Updates
             </p>
           </div>
-          {/* Refresh button */}
           <button onClick={fetchAllReports} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition-colors disabled:opacity-50">
-            <RefreshRoundedIcon sx={{ fontSize: 15, className: loading ? 'animate-spin' : '' }} />Refresh
+            <RefreshRoundedIcon sx={{ fontSize: 15 }} />Refresh
           </button>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* ── Firestore error banner ── */}
           {fetchError && (
             <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
               <div className="flex-1">
                 <p className="text-sm font-bold text-red-800">Failed to load reports</p>
                 <p className="text-xs text-red-600 mt-1">{fetchError}</p>
-                <p className="text-xs text-red-500 mt-2 font-medium">
-                  Fix: In Firestore → Rules, ensure admin role can read <code>dailyStatus</code> collection.
-                  Example rule: <code>allow read: if request.auth.token.role == 'admin';</code>
-                </p>
               </div>
               <button onClick={fetchAllReports} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700">Retry</button>
             </div>
           )}
 
-          {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard
-              icon={<AssignmentRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />}
-              label="Total Reports" value={filtered.length} sub="in selected range"
-              gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900" iconBg="bg-blue-200" />
-            <StatCard
-              icon={<CalendarTodayRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />}
-              label="Today" value={todayReports} sub="submitted today"
-              gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900" iconBg="bg-emerald-200" />
-            <StatCard
-              icon={<PeopleAltRoundedIcon sx={{ fontSize: 20, color: '#7c3aed' }} />}
-              label="Employees" value={uniqueEmployees} sub="unique reporters"
-              gradient="bg-gradient-to-br from-violet-50 to-violet-100 text-violet-900" iconBg="bg-violet-200" />
-            <StatCard
-              icon={<TrendingUpRoundedIcon sx={{ fontSize: 20, color: '#d97706' }} />}
-              label="Avg Words" value={avgWords} sub="per report"
-              gradient="bg-gradient-to-br from-amber-50 to-amber-100 text-amber-900" iconBg="bg-amber-200" />
+            <StatCard icon={<AssignmentRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />} label="Total Reports" value={filtered.length} sub="in selected range" gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900" iconBg="bg-blue-200" />
+            <StatCard icon={<CalendarTodayRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />} label="Today" value={todayReports} sub="submitted today" gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900" iconBg="bg-emerald-200" />
+            <StatCard icon={<PeopleAltRoundedIcon sx={{ fontSize: 20, color: '#7c3aed' }} />} label="Employees" value={uniqueEmployees} sub="unique reporters" gradient="bg-gradient-to-br from-violet-50 to-violet-100 text-violet-900" iconBg="bg-violet-200" />
+            <StatCard icon={<TrendingUpRoundedIcon sx={{ fontSize: 20, color: '#d97706' }} />} label="Avg Words" value={avgWords} sub="per report" gradient="bg-gradient-to-br from-amber-50 to-amber-100 text-amber-900" iconBg="bg-amber-200" />
           </div>
 
-          {/* Filters */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <FilterListRoundedIcon sx={{ fontSize: 18, color: '#2563eb' }} />
               <h2 className="font-extrabold text-slate-900 text-sm">Filter Reports</h2>
-              <span className="ml-2 text-[11px] text-slate-400 font-medium">
-                {employeeReports.length} total employee reports in Firestore
-              </span>
+              <span className="ml-2 text-[11px] text-slate-400 font-medium">{employeeReports.length} total employee reports</span>
               {activeFilterCount > 0 && (
                 <>
                   <span className="ml-1 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full">{activeFilterCount} active</span>
@@ -457,7 +394,9 @@ function AdminDailyStatusContent() {
                 </>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+            {/* ── Filter grid: 5 cols on large screens to fit employee dropdown ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Start Date</label>
                 <input type="date" value={startDate} max={endDate}
@@ -484,44 +423,65 @@ function AdminDailyStatusContent() {
                   )}
                 </div>
               </div>
+
+              {/* ── NEW: Employee dropdown ──────────────────────────────────── */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Employee</label>
+                <div className="relative">
+                  <PersonRoundedIcon
+                    sx={{ fontSize: 16 }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <select
+                    value={empFilter}
+                    onChange={e => setEmpFilter(e.target.value)}
+                    className={`w-full pl-8 pr-3 py-2 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none transition-colors appearance-none ${
+                      empFilter !== 'all' ? 'border-blue-400' : 'border-slate-200 focus:border-blue-500'
+                    }`}
+                  >
+                    <option value="all">All Employees</option>
+                    {employeeOptions.map(emp => (
+                      <option key={emp.uid} value={emp.uid}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Department</label>
                 <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 text-sm focus:border-blue-500 focus:outline-none">
+                  className={`w-full px-3 py-2 border rounded-xl bg-slate-50 text-slate-900 text-sm focus:outline-none transition-colors ${
+                    deptFilter !== 'all' ? 'border-blue-400' : 'border-slate-200 focus:border-blue-500'
+                  }`}>
                   <option value="all">All Departments</option>
                   {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Quick date ranges */}
             <div className="flex items-center gap-2 mt-4 flex-wrap">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick:</span>
               {[
-                { label: 'Today',        start: today, end: today },
+                { label: 'Today',        start: today,          end: today },
                 { label: 'Last 7 Days',  start: (() => { const d = new Date(); d.setDate(d.getDate()-6);  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })(), end: today },
-                { label: 'Last 30 Days', start: thirtyDaysAgo, end: today },
+                { label: 'Last 30 Days', start: thirtyDaysAgo,  end: today },
                 { label: 'This Month',   start: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01` })(), end: today },
-                { label: 'All Time',     start: '2020-01-01', end: today },
+                { label: 'All Time',     start: '2020-01-01',   end: today },
               ].map(q => (
                 <button key={q.label} onClick={() => { setStartDate(q.start); setEndDate(q.end) }}
                   className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                    startDate === q.start && endDate === q.end
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600'
+                    startDate === q.start && endDate === q.end ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600'
                   }`}>
                   {q.label}
                 </button>
               ))}
             </div>
-
             <p className="text-xs text-slate-400 font-medium mt-3">
               Showing <span className="font-bold text-slate-700">{filtered.length}</span> of{' '}
               <span className="font-bold text-slate-700">{employeeReports.length}</span> employee reports
             </p>
           </div>
 
-          {/* Table */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
               <EditNoteRoundedIcon sx={{ fontSize: 18, color: '#2563eb' }} />
@@ -529,6 +489,16 @@ function AdminDailyStatusContent() {
               {isRange && (
                 <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                   {startDate} → {endDate}
+                </span>
+              )}
+              {/* Show selected employee chip if filtered */}
+              {empFilter !== 'all' && (
+                <span className="ml-1 inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full">
+                  <PersonRoundedIcon sx={{ fontSize: 10 }} />
+                  {employeeOptions.find(e => e.uid === empFilter)?.name ?? 'Employee'}
+                  <button onClick={() => setEmpFilter('all')} className="ml-0.5 hover:text-violet-900">
+                    <CloseRoundedIcon sx={{ fontSize: 10 }} />
+                  </button>
                 </span>
               )}
               <span className="ml-auto text-xs text-slate-400 font-medium">Page {currentPage} of {totalPages}</span>
@@ -549,14 +519,16 @@ function AdminDailyStatusContent() {
                 <AssignmentRoundedIcon sx={{ fontSize: 40 }} />
                 <p className="text-sm mt-2 font-medium text-slate-400">
                   {employeeReports.length === 0
-                    ? 'No employee reports in Firestore yet'
-                    : `No reports in the selected date range (${startDate} → ${endDate})`}
+                    ? 'No employee reports yet'
+                    : empFilter !== 'all'
+                      ? `No reports for ${employeeOptions.find(e => e.uid === empFilter)?.name ?? 'this employee'} in range`
+                      : `No reports in range (${startDate} → ${endDate})`
+                  }
                 </p>
-                {employeeReports.length > 0 && (
-                  <button
-                    onClick={() => { setStartDate('2020-01-01'); setEndDate(today) }}
+                {(employeeReports.length > 0 || empFilter !== 'all') && (
+                  <button onClick={() => { setStartDate('2020-01-01'); setEndDate(today); setEmpFilter('all') }}
                     className="mt-3 px-4 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100">
-                    Show All Time
+                    Show All Time & Employees
                   </button>
                 )}
               </div>
@@ -573,8 +545,8 @@ function AdminDailyStatusContent() {
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {paginated.map((report, idx) => {
-                        const rowNum   = (currentPage - 1) * pageSize + idx + 1
-                        const wc       = wordCount(report.workSummary)
+                        const rowNum = (currentPage - 1) * pageSize + idx + 1
+                        const wc     = wordCount(report.workSummary)
                         const hasBlock = report.blockers &&
                           report.blockers.trim() !== '' &&
                           report.blockers.toLowerCase() !== 'no blockers at the moment.'
@@ -591,8 +563,7 @@ function AdminDailyStatusContent() {
                             </td>
                             <td className="px-4 py-3">
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 whitespace-nowrap">
-                                <DateRangeRoundedIcon sx={{ fontSize: 11 }} />
-                                {formatDateShort(report.date)}
+                                <DateRangeRoundedIcon sx={{ fontSize: 11 }} />{formatDateShort(report.date)}
                               </span>
                             </td>
                             <td className="px-4 py-3">
@@ -606,18 +577,12 @@ function AdminDailyStatusContent() {
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`text-xs font-bold ${wc > 600 ? 'text-emerald-600' : wc > 300 ? 'text-blue-600' : 'text-slate-400'}`}>
-                                {wc}
-                              </span>
+                              <span className={`text-xs font-bold ${wc > 600 ? 'text-emerald-600' : wc > 300 ? 'text-blue-600' : 'text-slate-400'}`}>{wc}</span>
                             </td>
-                            <td className="px-4 py-3 text-xs text-slate-500 font-medium whitespace-nowrap">
-                              {formatTime(report.updatedAt)}
-                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-500 font-medium whitespace-nowrap">{formatTime(report.updatedAt)}</td>
                             <td className="px-4 py-3">
-                              <button
-                                onClick={() => setViewReport(report)}
-                                className="w-7 h-7 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center justify-center transition-all"
-                                title="View report">
+                              <button onClick={() => setViewReport(report)}
+                                className="w-7 h-7 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center justify-center transition-all">
                                 <VisibilityRoundedIcon sx={{ fontSize: 14 }} />
                               </button>
                             </td>
@@ -627,11 +592,7 @@ function AdminDailyStatusContent() {
                     </tbody>
                   </table>
                 </div>
-                <Pagination
-                  currentPage={currentPage} totalPages={totalPages}
-                  pageSize={pageSize} totalItems={filtered.length}
-                  onPageChange={setCurrentPage} onPageSizeChange={setPageSize}
-                />
+                <Pagination currentPage={currentPage} totalPages={totalPages} pageSize={pageSize} totalItems={filtered.length} onPageChange={setCurrentPage} onPageSizeChange={setPageSize} />
               </>
             )}
           </div>

@@ -13,14 +13,16 @@ import {
   onSnapshot,
   setDoc,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { db, DEV } from './firebase'
 import { UserProfile } from './auth-context'
+
+const c = (name: string) => DEV ? `dev_${name}` : name
 
 // ── Users Service ─────────────────────────────────────────────────────────────
 
 export async function createUser(userData: UserProfile) {
   try {
-    const userRef = doc(db, 'users', userData.uid)
+    const userRef = doc(db, c('users'), userData.uid)
     await setDoc(userRef, userData)
     return userData
   } catch (error) {
@@ -30,12 +32,12 @@ export async function createUser(userData: UserProfile) {
 }
 
 export const activateUser = async (uid: string) => {
-  await updateDoc(doc(db, 'users', uid), { status: 'active' })
+  await updateDoc(doc(db, c('users'), uid), { status: 'active' })
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   try {
-    const userDoc = await getDoc(doc(db, 'users', uid))
+    const userDoc = await getDoc(doc(db, c('users'), uid))
     return userDoc.exists() ? (userDoc.data() as UserProfile) : null
   } catch (error) {
     console.error('Error getting user profile:', error)
@@ -45,7 +47,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 
 export async function getAllUsers(): Promise<UserProfile[]> {
   try {
-    const usersCollection = collection(db, 'users')
+    const usersCollection = collection(db, c('users'))
     const snapshot = await getDocs(usersCollection)
     return snapshot.docs.map((doc) => doc.data() as UserProfile)
   } catch (error) {
@@ -56,7 +58,7 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 
 export async function updateUser(uid: string, updates: Partial<UserProfile>) {
   try {
-    const userRef = doc(db, 'users', uid)
+    const userRef = doc(db, c('users'), uid)
     await updateDoc(userRef, updates)
   } catch (error) {
     console.error('Error updating user:', error)
@@ -65,13 +67,13 @@ export async function updateUser(uid: string, updates: Partial<UserProfile>) {
 }
 
 export const deleteUser = async (uid: string): Promise<void> => {
-  const userRef = doc(db, 'users', uid)
+  const userRef = doc(db, c('users'), uid)
   await deleteDoc(userRef)
 }
 
 export async function deactivateUser(uid: string) {
   try {
-    const userRef = doc(db, 'users', uid)
+    const userRef = doc(db, c('users'), uid)
     await updateDoc(userRef, { status: 'inactive' })
   } catch (error) {
     console.error('Error deactivating user:', error)
@@ -84,7 +86,7 @@ export async function deactivateUser(uid: string) {
 export interface AttendanceRecord {
   id?: string
   uid: string
-  userId?: string          // some employee-app versions write this instead of uid
+  userId?: string
   date: Timestamp
   checkInTime?: Timestamp | null
   checkOutTime?: Timestamp | null
@@ -96,7 +98,7 @@ export async function recordAttendance(
   attendance: Omit<AttendanceRecord, 'id'>
 ) {
   try {
-    const attendanceCollection = collection(db, 'attendance')
+    const attendanceCollection = collection(db, c('attendance'))
     const docRef = await addDoc(attendanceCollection, attendance)
     return { ...attendance, id: docRef.id }
   } catch (error) {
@@ -108,7 +110,7 @@ export async function recordAttendance(
 export async function getAttendanceByUser(uid: string): Promise<AttendanceRecord[]> {
   try {
     const q = query(
-      collection(db, 'attendance'),
+      collection(db, c('attendance')),
       where('uid', '==', uid),
       orderBy('date', 'desc')
     )
@@ -126,7 +128,7 @@ export async function getAttendanceByUser(uid: string): Promise<AttendanceRecord
 export async function getAllAttendance(): Promise<AttendanceRecord[]> {
   try {
     const q = query(
-      collection(db, 'attendance'),
+      collection(db, c('attendance')),
       orderBy('date', 'desc')
     )
     const snapshot = await getDocs(q)
@@ -145,7 +147,7 @@ export async function updateAttendance(
   updates: Partial<AttendanceRecord>
 ) {
   try {
-    const attendanceRef = doc(db, 'attendance', attendanceId)
+    const attendanceRef = doc(db, c('attendance'), attendanceId)
     await updateDoc(attendanceRef, updates)
   } catch (error) {
     console.error('Error updating attendance:', error)
@@ -159,7 +161,9 @@ export interface LeaveRequest {
   id?: string
   uid: string
   employeeName: string
+  email?: string
   startDate: Timestamp
+  updatedAt?: Timestamp
   endDate: Timestamp
   leaveType: 'casual' | 'sick' | 'vacation' | 'personal'
   reason: string
@@ -174,7 +178,7 @@ export async function createLeaveRequest(
   leaveRequest: Omit<LeaveRequest, 'id'>
 ) {
   try {
-    const leaveCollection = collection(db, 'leaveRequests')
+    const leaveCollection = collection(db, c('leaveRequests'))
     const docRef = await addDoc(leaveCollection, leaveRequest)
     return { ...leaveRequest, id: docRef.id }
   } catch (error) {
@@ -186,7 +190,7 @@ export async function createLeaveRequest(
 export async function getLeaveRequestsByUser(uid: string): Promise<LeaveRequest[]> {
   try {
     const q = query(
-      collection(db, 'leaveRequests'),
+      collection(db, c('leaveRequests')),
       where('uid', '==', uid),
       orderBy('createdAt', 'desc')
     )
@@ -204,7 +208,7 @@ export async function getLeaveRequestsByUser(uid: string): Promise<LeaveRequest[
 export async function getAllLeaveRequests(): Promise<LeaveRequest[]> {
   try {
     const q = query(
-      collection(db, 'leaveRequests'),
+      collection(db, c('leaveRequests')),
       orderBy('createdAt', 'desc')
     )
     const snapshot = await getDocs(q)
@@ -220,7 +224,7 @@ export async function getAllLeaveRequests(): Promise<LeaveRequest[]> {
 
 export async function approveLeaveRequest(leaveId: string, adminUid: string) {
   try {
-    const leaveRef = doc(db, 'leaveRequests', leaveId)
+    const leaveRef = doc(db, c('leaveRequests'), leaveId)
     await updateDoc(leaveRef, {
       status: 'approved',
       approvedBy: adminUid,
@@ -234,7 +238,7 @@ export async function approveLeaveRequest(leaveId: string, adminUid: string) {
 
 export async function rejectLeaveRequest(leaveId: string, adminUid: string) {
   try {
-    const leaveRef = doc(db, 'leaveRequests', leaveId)
+    const leaveRef = doc(db, c('leaveRequests'), leaveId)
     await updateDoc(leaveRef, {
       status: 'rejected',
       approvedBy: adminUid,
@@ -246,20 +250,15 @@ export async function rejectLeaveRequest(leaveId: string, adminUid: string) {
   }
 }
 
-/**
- * Creates an approved leave entry for a single day on behalf of an admin.
- * Used when the admin marks an Absent/Present employee as "On Leave"
- * from the attendance edit modal.
- */
 export async function createAdminLeaveEntry(
   uid: string,
   employeeName: string,
-  date: string,   // YYYY-MM-DD
+  date: string,
   adminUid: string,
 ): Promise<void> {
   try {
     const dateTs = Timestamp.fromDate(new Date(date + 'T00:00:00'))
-    await addDoc(collection(db, 'leaveRequests'), {
+    await addDoc(collection(db, c('leaveRequests')), {
       uid,
       employeeName,
       startDate:    dateTs,
@@ -284,7 +283,7 @@ export function subscribeToLeaveRequests(
   callback: (leaves: LeaveRequest[]) => void
 ) {
   const q = query(
-    collection(db, 'leaveRequests'),
+    collection(db, c('leaveRequests')),
     orderBy('createdAt', 'desc')
   )
   return onSnapshot(
@@ -303,7 +302,7 @@ export function subscribeToLeaveRequests(
 }
 
 export function subscribeToUsers(callback: (users: UserProfile[]) => void) {
-  const usersCollection = collection(db, 'users')
+  const usersCollection = collection(db, c('users'))
   return onSnapshot(
     usersCollection,
     (snapshot) => {
@@ -316,21 +315,11 @@ export function subscribeToUsers(callback: (users: UserProfile[]) => void) {
   )
 }
 
-/**
- * Subscribes to ALL attendance records ordered by date desc.
- *
- * NOTE: Firestore requires a single-field index on `date` (desc) for this
- * query. If you see a "failed-precondition" error in the console, click the
- * auto-generated link Firebase prints to create the index, then wait ~1 min.
- *
- * The normalise step ensures every record has a top-level `uid` regardless of
- * whether the employee app wrote `uid` or `userId`.
- */
 export function subscribeToAttendance(
   callback: (attendance: AttendanceRecord[]) => void
 ) {
   const q = query(
-    collection(db, 'attendance'),
+    collection(db, c('attendance')),
     orderBy('date', 'desc')
   )
   return onSnapshot(
@@ -338,7 +327,6 @@ export function subscribeToAttendance(
     (snapshot) => {
       const records = snapshot.docs.map((docSnap) => {
         const data = docSnap.data()
-        // Normalise: guarantee uid is always set
         const uid: string = data.uid || data.userId || ''
         return {
           ...data,

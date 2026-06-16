@@ -22,6 +22,7 @@ import AssignmentRoundedIcon    from '@mui/icons-material/AssignmentRounded'
 import LogoutRoundedIcon        from '@mui/icons-material/LogoutRounded'
 import MenuRoundedIcon          from '@mui/icons-material/MenuRounded'
 import CloseRoundedIcon         from '@mui/icons-material/CloseRounded'
+
 import FingerprintRoundedIcon   from '@mui/icons-material/FingerprintRounded'
 import ChevronLeftRoundedIcon   from '@mui/icons-material/ChevronLeftRounded'
 import ChevronRightRoundedIcon  from '@mui/icons-material/ChevronRightRounded'
@@ -32,6 +33,7 @@ import CircleIcon               from '@mui/icons-material/Circle'
 import ViewListRoundedIcon      from '@mui/icons-material/ViewListRounded'
 import OpenInNewRoundedIcon     from '@mui/icons-material/OpenInNewRounded'
 import EmojiEventsRoundedIcon   from '@mui/icons-material/EmojiEventsRounded'
+import BeachAccessRoundedIcon   from '@mui/icons-material/BeachAccessRounded'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type HolidayType = 'public' | 'festival' | 'national' | 'weekly_off'
@@ -198,7 +200,8 @@ function HolidayCalendarContent() {
   // ── Sidebar nav ─────────────────────────────────────────────────────────────
   const navItems = [
   { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
-{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },  // { href: '/employee/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
+{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },
+    {href: '/employee/leaves', icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
   { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
   { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
 ]

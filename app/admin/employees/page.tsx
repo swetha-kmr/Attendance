@@ -24,6 +24,7 @@ import FingerprintRoundedIcon      from '@mui/icons-material/FingerprintRounded'
 import AddRoundedIcon              from '@mui/icons-material/AddRounded'
 import SearchRoundedIcon           from '@mui/icons-material/SearchRounded'
 import EditRoundedIcon             from '@mui/icons-material/EditRounded'
+import BeachAccessRoundedIcon    from '@mui/icons-material/BeachAccessRounded'
 import PersonOffRoundedIcon        from '@mui/icons-material/PersonOffRounded'
 import MailRoundedIcon             from '@mui/icons-material/MailRounded'
 import PhoneRoundedIcon            from '@mui/icons-material/PhoneRounded'
@@ -339,6 +340,7 @@ function EmployeeManagementContent() {
     { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Dashboard',    active: false },
     { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Employees',    active: true  },
     { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Attendance',   active: false },
+    {href:'/admin/leaves', icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests', active: false },
     { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Daily Status', active: false },
     { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Settings',     active: false },
   ]

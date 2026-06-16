@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { ProtectedRoute } from '@/lib/protected-route'
 import {
@@ -15,37 +15,41 @@ import { useRouter, usePathname } from 'next/navigation'
 import { Timestamp } from 'firebase/firestore'
 import Link from 'next/link'
 
-// ── Firebase (for holidays + daily status check + missing checkout check) ─────
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore'
+// ── Firebase ──────────────────────────────────────────────────────────────────
+import { collection, getDocs, query, orderBy, where, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 
 // ── MUI Icons ─────────────────────────────────────────────────────────────────
-import DashboardRoundedIcon       from '@mui/icons-material/DashboardRounded'
-import PersonRoundedIcon          from '@mui/icons-material/PersonRounded'
-import EventNoteRoundedIcon       from '@mui/icons-material/EventNoteRounded'
-import LogoutRoundedIcon          from '@mui/icons-material/LogoutRounded'
-import MenuRoundedIcon            from '@mui/icons-material/MenuRounded'
-import CloseRoundedIcon           from '@mui/icons-material/CloseRounded'
-import LoginRoundedIcon           from '@mui/icons-material/LoginRounded'
-import CheckCircleRoundedIcon     from '@mui/icons-material/CheckCircleRounded'
-import ErrorRoundedIcon           from '@mui/icons-material/ErrorRounded'
-import CalendarMonthRoundedIcon   from '@mui/icons-material/CalendarMonthRounded'
-import WorkRoundedIcon            from '@mui/icons-material/WorkRounded'
-import BeachAccessRoundedIcon     from '@mui/icons-material/BeachAccessRounded'
-import AssignmentRoundedIcon      from '@mui/icons-material/AssignmentRounded'
-import AccessTimeRoundedIcon      from '@mui/icons-material/AccessTimeRounded'
-import WbSunnyRoundedIcon         from '@mui/icons-material/WbSunnyRounded'
-import AddCircleOutlineRoundedIcon from '@mui/icons-material/AddCircleOutlineRounded'
-import ManageAccountsRoundedIcon  from '@mui/icons-material/ManageAccountsRounded'
-import FingerprintRoundedIcon     from '@mui/icons-material/FingerprintRounded'
-import WeekendRoundedIcon         from '@mui/icons-material/WeekendRounded'
-import CelebrationRoundedIcon     from '@mui/icons-material/CelebrationRounded'
-import NightsStayRoundedIcon      from '@mui/icons-material/NightsStayRounded'
-import WbTwilightRoundedIcon      from '@mui/icons-material/WbTwilightRounded'
-import WarningAmberRoundedIcon    from '@mui/icons-material/WarningAmberRounded'
+import DashboardRoundedIcon          from '@mui/icons-material/DashboardRounded'
+import PersonRoundedIcon             from '@mui/icons-material/PersonRounded'
+import EventNoteRoundedIcon          from '@mui/icons-material/EventNoteRounded'
+import LogoutRoundedIcon             from '@mui/icons-material/LogoutRounded'
+import MenuRoundedIcon               from '@mui/icons-material/MenuRounded'
+import CloseRoundedIcon              from '@mui/icons-material/CloseRounded'
+import LoginRoundedIcon              from '@mui/icons-material/LoginRounded'
+import CheckCircleRoundedIcon        from '@mui/icons-material/CheckCircleRounded'
+import ErrorRoundedIcon              from '@mui/icons-material/ErrorRounded'
+import CalendarMonthRoundedIcon      from '@mui/icons-material/CalendarMonthRounded'
+import WorkRoundedIcon               from '@mui/icons-material/WorkRounded'
+import BeachAccessRoundedIcon        from '@mui/icons-material/BeachAccessRounded'
+import AssignmentRoundedIcon         from '@mui/icons-material/AssignmentRounded'
+import AccessTimeRoundedIcon         from '@mui/icons-material/AccessTimeRounded'
+import WbSunnyRoundedIcon            from '@mui/icons-material/WbSunnyRounded'
+import FingerprintRoundedIcon        from '@mui/icons-material/FingerprintRounded'
+import WeekendRoundedIcon            from '@mui/icons-material/WeekendRounded'
+import CelebrationRoundedIcon        from '@mui/icons-material/CelebrationRounded'
+import NightsStayRoundedIcon         from '@mui/icons-material/NightsStayRounded'
+import WbTwilightRoundedIcon         from '@mui/icons-material/WbTwilightRounded'
+import WarningAmberRoundedIcon       from '@mui/icons-material/WarningAmberRounded'
 import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded'
+import NotificationsRoundedIcon      from '@mui/icons-material/NotificationsRounded'
+import CakeRoundedIcon               from '@mui/icons-material/CakeRounded'
+import CheckRoundedIcon              from '@mui/icons-material/CheckRounded'
+import CancelRoundedIcon             from '@mui/icons-material/CancelRounded'
+import HourglassEmptyRoundedIcon     from '@mui/icons-material/HourglassEmptyRounded'
+import FiberManualRecordRoundedIcon  from '@mui/icons-material/FiberManualRecordRounded'
 
-// ── Holiday type ───────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 export type HolidayType = 'public' | 'festival' | 'national' | 'weekly_off'
 export interface Holiday {
   id?: string
@@ -54,6 +58,15 @@ export interface Holiday {
   type: HolidayType
 }
 
+export interface Birthday {
+  id?: string
+  name: string
+  date: Timestamp        // full date stored, only month+day used for yearly recurrence
+  userId?: string        // optional link to employee
+  department?: string
+}
+
+// ── Firestore helpers ─────────────────────────────────────────────────────────
 async function fetchHolidaysForYear(year: number): Promise<Holiday[]> {
   const start = Timestamp.fromDate(new Date(year, 0, 1))
   const end   = Timestamp.fromDate(new Date(year, 11, 31, 23, 59, 59))
@@ -65,6 +78,11 @@ async function fetchHolidaysForYear(year: number): Promise<Holiday[]> {
   )
   const snap = await getDocs(q)
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday))
+}
+
+async function fetchBirthdays(): Promise<Birthday[]> {
+  const snap = await getDocs(query(collection(db, 'birthdays'), orderBy('date', 'asc')))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Birthday))
 }
 
 async function checkDailyStatusSubmitted(userId: string): Promise<boolean> {
@@ -81,49 +99,57 @@ async function checkDailyStatusSubmitted(userId: string): Promise<boolean> {
   return !snap.empty
 }
 
-// ── NEW: Check if employee has a previous day check-in with no checkout ────────
-// Returns the incomplete record if found, null if everything is clean.
-// We query attendance where:
-//   userId == uid  AND  checkOutTime == null  AND  date < today midnight
-// NOTE: Firestore requires a composite index for this query.
-// If you see a "requires an index" error in the console, click the link
-// in the error message to create it automatically in Firebase Console.
 async function getPreviousMissingCheckout(uid: string): Promise<{
-  id: string
-  date: Timestamp
-  checkInTime: Timestamp
+  id: string; date: Timestamp; checkInTime: Timestamp
 } | null> {
-  const now          = new Date()
+  const now           = new Date()
   const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
-
   const q = query(
     collection(db, 'attendance'),
     where('userId', '==', uid),
     where('checkOutTime', '==', null),
     where('date', '<', Timestamp.fromDate(todayMidnight)),
   )
-
   try {
     const snap = await getDocs(q)
     if (snap.empty) return null
-
-    // Pick the most recent incomplete record
     const docs = snap.docs
       .map(d => ({ id: d.id, ...(d.data() as any) }))
       .sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime())
-
     return docs[0]
   } catch (err) {
-    // If index doesn't exist yet, fail silently so app still works
-    console.warn('getPreviousMissingCheckout query failed (index may be missing):', err)
+    console.warn('getPreviousMissingCheckout query failed:', err)
     return null
   }
 }
 
-const HOLIDAY_TYPE_CONFIG: Record<
-  HolidayType,
-  { badge: string; text: string; dot: string; label: string }
-> = {
+// ── Birthday helpers ──────────────────────────────────────────────────────────
+function isBirthdayToday(bday: Birthday): boolean {
+  const d     = bday.date.toDate()
+  const today = new Date()
+  return d.getMonth() === today.getMonth() && d.getDate() === today.getDate()
+}
+
+function daysUntilBirthday(bday: Birthday): number {
+  const d     = bday.date.toDate()
+  const today = new Date()
+  const next  = new Date(today.getFullYear(), d.getMonth(), d.getDate())
+  if (next < today) next.setFullYear(today.getFullYear() + 1)
+  const diff  = next.getTime() - today.setHours(0, 0, 0, 0)
+  return Math.ceil(diff / 86400000)
+}
+
+function getUpcomingBirthdays(birthdays: Birthday[], days = 30): Birthday[] {
+  return birthdays
+    .filter(b => {
+      const n = daysUntilBirthday(b)
+      return n >= 0 && n <= days
+    })
+    .sort((a, b) => daysUntilBirthday(a) - daysUntilBirthday(b))
+}
+
+// ── Configs ───────────────────────────────────────────────────────────────────
+const HOLIDAY_TYPE_CONFIG: Record<HolidayType, { badge: string; text: string; dot: string; label: string }> = {
   public:     { badge: 'bg-rose-100',    text: 'text-rose-700',    dot: 'bg-rose-500',    label: 'Public Holiday'   },
   festival:   { badge: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Festival Holiday' },
   national:   { badge: 'bg-blue-100',    text: 'text-blue-700',    dot: 'bg-blue-500',    label: 'National Holiday' },
@@ -134,7 +160,7 @@ function getGreeting(): { text: string; icon: React.ReactNode } {
   const hour = new Date().getHours()
   if (hour < 12) return { text: 'Good Morning',   icon: <WbSunnyRoundedIcon    sx={{ fontSize: 16, color: '#d97706' }} /> }
   if (hour < 17) return { text: 'Good Afternoon', icon: <WbTwilightRoundedIcon sx={{ fontSize: 16, color: '#ea580c' }} /> }
-  return               { text: 'Good Evening',    icon: <NightsStayRoundedIcon sx={{ fontSize: 16, color: '#7c3aed' }} /> }
+  return               {text: 'Good Evening',    icon: <NightsStayRoundedIcon sx={{ fontSize: 16, color: '#7c3aed' }} /> }
 }
 
 function sameDay(a: Date, b: Date) {
@@ -171,7 +197,6 @@ function SadPersonIllustration() {
     </svg>
   )
 }
-
 function CheckInIllustration() {
   return (
     <svg viewBox="0 0 200 160" xmlns="http://www.w3.org/2000/svg" className="w-36 h-28 mx-auto">
@@ -188,7 +213,6 @@ function CheckInIllustration() {
     </svg>
   )
 }
-
 function CheckOutIllustration() {
   return (
     <svg viewBox="0 0 200 160" xmlns="http://www.w3.org/2000/svg" className="w-36 h-28 mx-auto">
@@ -270,45 +294,22 @@ function DailyStatusBlockModal({ show, onClose }: { show: boolean; onClose: () =
   )
 }
 
-// ── NEW: Missing Checkout Block Modal ─────────────────────────────────────────
-// Shows when the employee tries to check in but has an unresolved previous
-// day checkout. Check-in is fully blocked until admin resolves it.
-function MissingCheckoutModal({
-  show,
-  onClose,
-  missingRecord,
-}: {
-  show: boolean
-  onClose: () => void
+// ── Missing Checkout Block Modal ──────────────────────────────────────────────
+function MissingCheckoutModal({ show, onClose, missingRecord }: {
+  show: boolean; onClose: () => void
   missingRecord: { date: Timestamp; checkInTime: Timestamp } | null
 }) {
   if (!show || !missingRecord) return null
-
-  const missedDate = missingRecord.date.toDate().toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
-  const checkedInAt = missingRecord.checkInTime.toDate().toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit',
-  })
-
+  const missedDate   = missingRecord.date.toDate().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const checkedInAt  = missingRecord.checkInTime.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200">
-
-        {/* Icon */}
         <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center mx-auto mb-4">
           <WarningAmberRoundedIcon sx={{ fontSize: 32, color: '#e11d48' }} />
         </div>
-
-        {/* Title */}
-        <h2 className="text-xl font-bold text-slate-900 text-center mb-1">
-          Previous Checkout Missing
-        </h2>
-        <p className="text-sm text-slate-500 text-center mb-5">
-          You cannot check in until your previous day's checkout is resolved.
-        </p>
-
-        {/* Detail card */}
+        <h2 className="text-xl font-bold text-slate-900 text-center mb-1">Previous Checkout Missing</h2>
+        <p className="text-sm text-slate-500 text-center mb-5">You cannot check in until your previous day's checkout is resolved.</p>
         <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 mb-5 space-y-2.5">
           <div className="flex items-center gap-3">
             <span className="w-5 h-5 rounded-full bg-rose-200 text-rose-700 text-[10px] font-bold flex items-center justify-center shrink-0">!</span>
@@ -325,22 +326,216 @@ function MissingCheckoutModal({
             </div>
           </div>
         </div>
-
-        {/* Admin contact note */}
         <div className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-5">
           <AdminPanelSettingsRoundedIcon sx={{ fontSize: 18, color: '#64748b', flexShrink: 0, mt: '1px' }} />
           <p className="text-xs text-slate-600 font-medium leading-relaxed">
-            Please contact your <span className="font-bold text-slate-800">administrator</span> to mark your checkout for the missed day. Once resolved, you can check in normally.
+            Please contact your <span className="font-bold text-slate-800">administrator</span> to mark your checkout for the missed day.
           </p>
         </div>
-
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition-colors"
-        >
+        <button onClick={onClose} className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition-colors">
           Okay, Got It
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Notification Dropdown ─────────────────────────────────────────────────────
+interface Notification {
+  id: string
+  type: 'leave_approved' | 'leave_rejected' | 'leave_pending'
+  title: string
+  body: string
+  timestamp: Date
+  read: boolean
+  leaveType?: string
+}
+
+function buildNotificationsFromLeaves(leaves: LeaveRequest[]): Notification[] {
+  return leaves
+    .filter(l => l.status === 'approved' || l.status === 'rejected')
+    .sort((a, b) => {
+      const aT = (a.updatedAt ?? a.createdAt)?.toDate().getTime() ?? 0
+      const bT = (b.updatedAt ?? b.createdAt)?.toDate().getTime() ?? 0
+      return bT - aT
+    })
+    .slice(0, 20)
+    .map(l => ({
+      id: l.id ?? '',
+      type: l.status === 'approved' ? 'leave_approved' : 'leave_rejected',
+      title: l.status === 'approved' ? 'Leave Approved ✅' : 'Leave Rejected ❌',
+      body: `Your ${l.leaveType} leave request (${l.startDate.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${l.endDate.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}) has been ${l.status}.`,
+      timestamp: (l.updatedAt ?? l.createdAt)?.toDate() ?? new Date(),
+      read: false,
+      leaveType: l.leaveType,
+    }))
+}
+
+function timeAgo(date: Date): string {
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
+function NotificationBell({ notifications, onMarkAllRead }: {
+  notifications: Notification[]
+  onMarkAllRead: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref             = useRef<HTMLDivElement>(null)
+  const unread          = notifications.filter(n => !n.read).length
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const iconForType = (type: Notification['type']) => {
+    if (type === 'leave_approved') return <CheckRoundedIcon sx={{ fontSize: 14 }} />
+    if (type === 'leave_rejected') return <CancelRoundedIcon sx={{ fontSize: 14 }} />
+    return <HourglassEmptyRoundedIcon sx={{ fontSize: 14 }} />
+  }
+  const colorForType = (type: Notification['type']) => {
+    if (type === 'leave_approved') return 'bg-emerald-100 text-emerald-600'
+    if (type === 'leave_rejected') return 'bg-red-100 text-red-600'
+    return 'bg-amber-100 text-amber-600'
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => { setOpen(o => !o); if (!open && unread > 0) onMarkAllRead() }}
+        className="relative w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-colors"
+      >
+        <NotificationsRoundedIcon sx={{ fontSize: 20 }} />
+        {unread > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center px-1 border-2 border-white">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-11 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <p className="text-sm font-extrabold text-slate-900">Notifications</p>
+            {notifications.length > 0 && (
+              <button onClick={onMarkAllRead} className="text-[11px] text-blue-600 font-semibold hover:underline">
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center py-10 text-slate-300">
+                <NotificationsRoundedIcon sx={{ fontSize: 36 }} />
+                <p className="text-sm text-slate-400 mt-2 font-medium">No notifications yet</p>
+              </div>
+            ) : (
+              notifications.map(n => (
+                <div key={n.id} className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-blue-50/50' : ''}`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${colorForType(n.type)}`}>
+                    {iconForType(n.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-900">{n.title}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{timeAgo(n.timestamp)}</p>
+                  </div>
+                  {!n.read && (
+                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Birthday Panel ────────────────────────────────────────────────────────────
+function BirthdayPanel({ birthdays }: { birthdays: Birthday[] }) {
+  const todayBirthdays    = birthdays.filter(isBirthdayToday)
+  const upcomingBirthdays = getUpcomingBirthdays(birthdays, 30).filter(b => !isBirthdayToday(b))
+
+  if (todayBirthdays.length === 0 && upcomingBirthdays.length === 0) return null
+
+  const avatarColors = [
+    'from-pink-500 to-rose-500',
+    'from-violet-500 to-purple-500',
+    'from-blue-500 to-cyan-500',
+    'from-amber-500 to-orange-500',
+    'from-emerald-500 to-teal-500',
+  ]
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center">
+          <CakeRoundedIcon sx={{ fontSize: 18, color: '#fff' }} />
+        </div>
+        <div>
+          <h2 className="text-sm font-extrabold text-slate-900">Birthdays</h2>
+          <p className="text-[11px] text-slate-400">Upcoming in the next 30 days</p>
+        </div>
+        {todayBirthdays.length > 0 && (
+          <span className="ml-auto px-2.5 py-1 rounded-full text-[10px] font-bold bg-pink-100 text-pink-600 animate-pulse">
+            🎂 Today!
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 space-y-3">
+        {/* Today's birthdays */}
+        {todayBirthdays.map((b, i) => (
+          <div key={b.id} className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-100">
+            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${avatarColors[i % avatarColors.length]} flex items-center justify-center text-white font-bold text-sm shrink-0`}>
+              {b.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">{b.name}</p>
+              {b.department && <p className="text-[11px] text-slate-500">{b.department}</p>}
+            </div>
+            <div className="text-center shrink-0">
+              <p className="text-lg">🎉</p>
+              <p className="text-[10px] font-bold text-pink-600">Today!</p>
+            </div>
+          </div>
+        ))}
+
+        {/* Upcoming birthdays */}
+        {upcomingBirthdays.slice(0, 5).map((b, i) => {
+          const days = daysUntilBirthday(b)
+          const d    = b.date.toDate()
+          return (
+            <div key={b.id} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 transition-colors">
+              <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${avatarColors[(i + todayBirthdays.length) % avatarColors.length]} flex items-center justify-center text-white font-bold text-sm shrink-0`}>
+                {b.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-900">{b.name}</p>
+                <p className="text-[11px] text-slate-400">
+                  {d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  {b.department && ` · ${b.department}`}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs font-bold text-slate-700">{days === 1 ? 'Tomorrow' : `${days} days`}</p>
+                <p className="text-[10px] text-slate-400">
+                  {d.toLocaleDateString('en-IN', { weekday: 'short' })}
+                </p>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -368,6 +563,7 @@ function EmployeeDashboardContent() {
   const [attendance,               setAttendance]               = useState<AttendanceRecord[]>([])
   const [leaves,                   setLeaves]                   = useState<LeaveRequest[]>([])
   const [holidays,                 setHolidays]                 = useState<Holiday[]>([])
+  const [birthdays,                setBirthdays]                = useState<Birthday[]>([])
   const [todayRecord,              setTodayRecord]              = useState<AttendanceRecord | null>(null)
   const [actionLoading,            setActionLoading]            = useState(false)
   const [error,                    setError]                    = useState('')
@@ -378,32 +574,39 @@ function EmployeeDashboardContent() {
   const [showDailyStatusBlock,     setShowDailyStatusBlock]     = useState(false)
   const [logoutLoading,            setLogoutLoading]            = useState(false)
   const [hasDailyStatus,           setHasDailyStatus]           = useState(false)
-
-  // ── NEW: missing checkout state ───────────────────────────────────────────
   const [missingCheckout,          setMissingCheckout]          = useState<{ id: string; date: Timestamp; checkInTime: Timestamp } | null>(null)
   const [showMissingCheckoutModal, setShowMissingCheckoutModal] = useState(false)
   const [checkingMissed,           setCheckingMissed]           = useState(false)
+
+  // Notifications state — derived from leaves, with read tracking in memory
+ const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => {
+  try {
+    const stored = localStorage.getItem('seyon_read_notif_ids')
+    return stored ? new Set(JSON.parse(stored)) : new Set()
+  } catch { return new Set() }
+})
+
 
   const [greeting] = useState(() => getGreeting())
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
 
-  // HR employees are exempt from the daily status requirement
-  const isHREmployee =
-    userProfile?.department === 'HR' || userProfile?.showDailyStatus === false
+  const isHREmployee = userProfile?.department === 'HR' || userProfile?.showDailyStatus === false
 
   const loadData = async () => {
     if (!userProfile) return
     try {
       const year = new Date().getFullYear()
-      const [attendanceData, leavesData, holidaysData] = await Promise.all([
+      const [attendanceData, leavesData, holidaysData, birthdaysData] = await Promise.all([
         getAttendanceByUser(userProfile.uid),
         getLeaveRequestsByUser(userProfile.uid),
         fetchHolidaysForYear(year),
+        fetchBirthdays(),
       ])
       setAttendance(attendanceData)
       setLeaves(leavesData)
       setHolidays(holidaysData)
+      setBirthdays(birthdaysData)
 
       const todayStr = new Date().toDateString()
       const found    = attendanceData.find(a => a.date.toDate().toDateString() === todayStr) || null
@@ -420,7 +623,17 @@ function EmployeeDashboardContent() {
     }
   }
 
-  // ── NEW: Check for missing previous checkout on mount ─────────────────────
+  // Real-time leave updates so notifications appear without refresh
+  useEffect(() => {
+    if (!userProfile?.uid) return
+    const q = query(collection(db, 'leaveRequests'), where('userId', '==', userProfile.uid))
+    const unsub = onSnapshot(q, snap => {
+      const updated = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRequest))
+      setLeaves(updated)
+    })
+    return () => unsub()
+  }, [userProfile?.uid])
+
   useEffect(() => {
     if (!userProfile?.uid) return
     const check = async () => {
@@ -439,16 +652,9 @@ function EmployeeDashboardContent() {
 
   useEffect(() => { loadData() }, [userProfile])
 
-  // ── Check-in: blocked if missing previous checkout ────────────────────────
   const handleCheckInClick = () => {
     if (hasCheckedIn || actionLoading) return
-
-    // If there's an unresolved previous checkout, block and show modal
-    if (missingCheckout) {
-      setShowMissingCheckoutModal(true)
-      return
-    }
-
+    if (missingCheckout) { setShowMissingCheckoutModal(true); return }
     setShowCheckInConfirm(true)
   }
 
@@ -458,18 +664,15 @@ function EmployeeDashboardContent() {
     setActionLoading(true)
     setError('')
     try {
-      // IMPORTANT: Store checkOutTime as null explicitly so the
-      // getPreviousMissingCheckout query can find this record tomorrow
-      // if the employee forgets to check out.
       const record = await recordAttendance({
         uid:          userProfile.uid,
         date:         Timestamp.now(),
         checkInTime:  Timestamp.now(),
-        checkOutTime: null,   // ← must be explicit null (not omitted)
+        checkOutTime: null,
         status:       'present',
       })
       setTodayRecord(record)
-      setSuccessMsg('Checked in successfully! Have a great day 🎉')
+      setSuccessMsg('Checked in successfully! Have a great day ')
       await loadData()
     } catch (err: any) {
       setError(err.message || 'Failed to check in')
@@ -493,7 +696,6 @@ function EmployeeDashboardContent() {
       }
       await updateAttendance(todayRecord.id, { checkOutTime, workHours })
       setSuccessMsg('Checked out! See you tomorrow 👋')
-      // Clear the missing checkout state since today is now resolved
       setMissingCheckout(null)
       await loadData()
     } catch (err: any) {
@@ -509,22 +711,14 @@ function EmployeeDashboardContent() {
 
   const handleCheckOutClick = () => {
     if (!hasCheckedIn || hasCheckedOut || actionLoading) return
-    if (!isHREmployee && !hasDailyStatus) {
-      setShowDailyStatusBlock(true)
-      return
-    }
+    if (!isHREmployee && !hasDailyStatus) { setShowDailyStatusBlock(true); return }
     setShowCheckOutConfirm(true)
   }
 
   const handleLogoutConfirmed = async () => {
     setLogoutLoading(true)
-    try {
-      await signOut()
-      router.push('/')
-    } catch {
-      setLogoutLoading(false)
-      setShowLogoutConfirm(false)
-    }
+    try { await signOut(); router.push('/') }
+    catch { setLogoutLoading(false); setShowLogoutConfirm(false) }
   }
 
   const formatTime = (ts?: Timestamp | null) =>
@@ -562,11 +756,22 @@ function EmployeeDashboardContent() {
   }
 
   const status = todayStatusLabel()
-
   const showDailyStatusWarning = !isHREmployee && hasCheckedIn && !hasCheckedOut && !hasDailyStatus
-
-  // ── NEW: whether check-in should visually appear blocked ─────────────────
   const checkInIsBlocked = !hasCheckedIn && !!missingCheckout && !checkingMissed
+
+  // Build notifications from leaves
+  const notifications = useMemo(() => {
+    const base = buildNotificationsFromLeaves(leaves)
+    return base.map(n => ({ ...n, read: readNotifIds.has(n.id) }))
+  }, [leaves, readNotifIds])
+
+ const handleMarkAllRead = () => {
+  const allIds = new Set(notifications.map(n => n.id))
+  setReadNotifIds(allIds)
+  try {
+    localStorage.setItem('seyon_read_notif_ids', JSON.stringify([...allIds]))
+  } catch {}
+}
 
   const enrichedRecentDays = useMemo(() => {
     const today = new Date()
@@ -584,10 +789,8 @@ function EmployeeDashboardContent() {
       d.setHours(0, 0, 0, 0)
 
       if (isSunday(d)) { days.push({ date: d, type: 'weekly_off', label: 'Weekly Off' }); continue }
-
       const matchedHoliday = holidays.find(h => sameDay(h.date.toDate(), d))
       if (matchedHoliday) { days.push({ date: d, type: 'holiday', holiday: matchedHoliday, label: matchedHoliday.name }); continue }
-
       const onLeave = leaves.some(l => {
         if (l.status !== 'approved') return false
         const ls = l.startDate.toDate(); ls.setHours(0, 0, 0, 0)
@@ -595,19 +798,17 @@ function EmployeeDashboardContent() {
         return d >= ls && d <= le
       })
       if (onLeave) { days.push({ date: d, type: 'on_leave', label: 'On Leave' }); continue }
-
       const attRecord = attendance.find(a => sameDay(a.date.toDate(), d))
       if (attRecord) { days.push({ date: d, type: 'attendance', record: attRecord }); continue }
-
       if (d < today) { days.push({ date: d, type: 'absent', label: 'Absent' }) }
     }
-
     return days.slice(0, 10)
   }, [attendance, holidays, leaves])
 
   const navItems = [
     { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
     { href: '/employee/MyProfile',        icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,        label: 'My Profile'       },
+    { href: '/employee/leaves',           icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests'   },
     { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
     { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
   ]
@@ -616,51 +817,17 @@ function EmployeeDashboardContent() {
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
       {/* ── Modals ── */}
-      <ConfirmModal
-        show={showCheckInConfirm}
-        onClose={() => setShowCheckInConfirm(false)}
-        onConfirm={handleCheckInConfirmed}
-        illustration={<CheckInIllustration />}
-        title="Welcome!"
-        subtitle="Do you want to check in now?"
-        confirmLabel="Yes, Check In"
-        confirmClass="bg-green-600 hover:bg-green-700"
-      />
-
-      <ConfirmModal
-        show={showCheckOutConfirm}
-        onClose={() => setShowCheckOutConfirm(false)}
-        onConfirm={handleCheckOutConfirmed}
-        illustration={<CheckOutIllustration />}
-        title="Leaving Already? 🌙"
-        subtitle="Are you sure you want to check out?"
-        confirmLabel="Yes, Check Out"
-        confirmClass="bg-rose-500 hover:bg-rose-600"
-      />
-
-      <ConfirmModal
-        show={showLogoutConfirm}
-        onClose={() => setShowLogoutConfirm(false)}
-        onConfirm={handleLogoutConfirmed}
-        illustration={<SadPersonIllustration />}
-        title="Comeback Soon!"
-        subtitle="Are you sure you want to logout?"
-        confirmLabel="Yes, Logout"
-        confirmClass="bg-red-600 hover:bg-red-700"
-        loading={logoutLoading}
-      />
-
-      <DailyStatusBlockModal
-        show={showDailyStatusBlock}
-        onClose={() => setShowDailyStatusBlock(false)}
-      />
-
-      {/* NEW: Missing checkout modal */}
-      <MissingCheckoutModal
-        show={showMissingCheckoutModal}
-        onClose={() => setShowMissingCheckoutModal(false)}
-        missingRecord={missingCheckout}
-      />
+      <ConfirmModal show={showCheckInConfirm} onClose={() => setShowCheckInConfirm(false)} onConfirm={handleCheckInConfirmed}
+        illustration={<CheckInIllustration />} title="Welcome!" subtitle="Do you want to check in now?"
+        confirmLabel="Yes, Check In" confirmClass="bg-green-600 hover:bg-green-700" />
+      <ConfirmModal show={showCheckOutConfirm} onClose={() => setShowCheckOutConfirm(false)} onConfirm={handleCheckOutConfirmed}
+        illustration={<CheckOutIllustration />} title="Leaving Already? 🌙" subtitle="Are you sure you want to check out?"
+        confirmLabel="Yes, Check Out" confirmClass="bg-rose-500 hover:bg-rose-600" />
+      <ConfirmModal show={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={handleLogoutConfirmed}
+        illustration={<SadPersonIllustration />} title="Comeback Soon!" subtitle="Are you sure you want to logout?"
+        confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700" loading={logoutLoading} />
+      <DailyStatusBlockModal show={showDailyStatusBlock} onClose={() => setShowDailyStatusBlock(false)} />
+      <MissingCheckoutModal show={showMissingCheckoutModal} onClose={() => setShowMissingCheckoutModal(false)} missingRecord={missingCheckout} />
 
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -675,21 +842,15 @@ function EmployeeDashboardContent() {
             </div>
           </div>
         </div>
-
         <nav className="flex-1 px-3 py-5 space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 mb-3">Menu</p>
           {navItems.map((item) => {
             const isActive = pathname.replace(/\/$/, '') === item.href.replace(/\/$/, '')
             return (
-              <Link
-                key={item.href}
-                href={item.href}
+              <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 w-full ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
+                  isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-200 pointer-events-none' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}>
                 <span className={isActive ? 'text-white' : 'text-slate-400'}>{item.icon}</span>
                 {item.label}
                 {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
@@ -697,7 +858,6 @@ function EmployeeDashboardContent() {
             )
           })}
         </nav>
-
         <div className="px-3 py-4 border-t border-slate-100 space-y-3">
           <div className="px-3 py-3 bg-slate-50 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
@@ -708,23 +868,19 @@ function EmployeeDashboardContent() {
               <p className="text-[11px] text-slate-400 truncate">{userProfile?.email}</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm"
-          >
+          <button onClick={() => setShowLogoutConfirm(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-sm">
             <LogoutRoundedIcon sx={{ fontSize: 18 }} />Sign Out
           </button>
         </div>
       </aside>
 
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
+      {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <div className="flex-1 flex flex-col overflow-hidden">
 
-        {/* Header */}
-        <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-4 sticky top-0 z-20">
+        {/* Header — with notification bell */}
+        <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center gap-3 sticky top-0 z-20">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
             {sidebarOpen ? <CloseRoundedIcon /> : <MenuRoundedIcon />}
           </button>
@@ -734,6 +890,10 @@ function EmployeeDashboardContent() {
               {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
+
+          {/* Notification Bell */}
+          <NotificationBell notifications={notifications} onMarkAllRead={handleMarkAllRead} />
+
           <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border ${
             greeting.text === 'Good Morning'   ? 'bg-amber-50 border-amber-200'   :
             greeting.text === 'Good Afternoon' ? 'bg-orange-50 border-orange-200' : 'bg-violet-50 border-violet-200'
@@ -750,7 +910,6 @@ function EmployeeDashboardContent() {
 
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* Error / success toasts */}
           {error && (
             <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl text-sm text-red-700">
               <ErrorRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />{error}
@@ -762,7 +921,7 @@ function EmployeeDashboardContent() {
             </div>
           )}
 
-          {/* NEW: Inline missing-checkout warning banner (shows above the attendance card) */}
+          {/* Missing checkout warning */}
           {checkInIsBlocked && (
             <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl">
               <WarningAmberRoundedIcon sx={{ fontSize: 20, color: '#e11d48', flexShrink: 0, mt: '1px' }} />
@@ -778,11 +937,25 @@ function EmployeeDashboardContent() {
             </div>
           )}
 
+          {/* Today's birthday banner */}
+          {birthdays.filter(isBirthdayToday).length > 0 && (
+            <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-200 rounded-2xl">
+              <span className="text-2xl">🎂</span>
+              <div>
+                <p className="text-sm font-bold text-pink-700">
+                  Birthday{birthdays.filter(isBirthdayToday).length > 1 ? 's' : ''} Today!
+                </p>
+                <p className="text-xs text-pink-500">
+                  Wish {birthdays.filter(isBirthdayToday).map(b => b.name).join(' & ')} a Happy Birthday! 
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* ── Attendance card ── */}
           <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 rounded-3xl p-6 text-white shadow-xl shadow-blue-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/5" />
             <div className="absolute -right-2 top-20 w-24 h-24 rounded-full bg-white/5" />
-
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -814,59 +987,27 @@ function EmployeeDashboardContent() {
                   </div>
                 )}
               </div>
-
               <div className="flex gap-3 shrink-0">
-
-                {/* ── Check In button ─────────────────────────────────────────
-                    Three visual states:
-                    1. Already checked in → greyed out with ✓
-                    2. Blocked (missing previous checkout) → rose/locked look
-                    3. Normal → white button
-                */}
-                <button
-                  onClick={handleCheckInClick}
-                  disabled={hasCheckedIn || actionLoading || checkingMissed}
+                <button onClick={handleCheckInClick} disabled={hasCheckedIn || actionLoading || checkingMissed}
                   className={`relative flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all duration-200 ${
-                    hasCheckedIn
-                      ? 'bg-white/20 text-white/60 cursor-not-allowed'
-                      : checkInIsBlocked
-                        ? 'bg-rose-400/80 text-white cursor-pointer hover:bg-rose-400 shadow-lg'
-                        : checkingMissed
-                          ? 'bg-white/20 text-white/60 cursor-wait'
+                    hasCheckedIn ? 'bg-white/20 text-white/60 cursor-not-allowed'
+                      : checkInIsBlocked ? 'bg-rose-400/80 text-white cursor-pointer hover:bg-rose-400 shadow-lg'
+                        : checkingMissed ? 'bg-white/20 text-white/60 cursor-wait'
                           : 'bg-white text-blue-700 hover:bg-blue-50 shadow-lg hover:-translate-y-0.5'
-                  }`}
-                >
-                  {checkInIsBlocked
-                    ? <WarningAmberRoundedIcon sx={{ fontSize: 18 }} />
-                    : <LoginRoundedIcon sx={{ fontSize: 18 }} />
-                  }
-                  {hasCheckedIn
-                    ? 'Checked In ✓'
-                    : checkingMissed
-                      ? 'Checking…'
-                      : checkInIsBlocked
-                        ? 'Blocked ⚠'
-                        : 'Check In'
-                  }
+                  }`}>
+                  {checkInIsBlocked ? <WarningAmberRoundedIcon sx={{ fontSize: 18 }} /> : <LoginRoundedIcon sx={{ fontSize: 18 }} />}
+                  {hasCheckedIn ? 'Checked In ✓' : checkingMissed ? 'Checking…' : checkInIsBlocked ? 'Blocked ⚠' : 'Check In'}
                 </button>
-
-                {/* ── Check Out button (unchanged) ── */}
-                <button
-                  onClick={handleCheckOutClick}
-                  disabled={!hasCheckedIn || hasCheckedOut || actionLoading}
+                <button onClick={handleCheckOutClick} disabled={!hasCheckedIn || hasCheckedOut || actionLoading}
                   className={`relative flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all duration-200 ${
-                    !hasCheckedIn || hasCheckedOut
-                      ? 'bg-white/10 text-white/50 cursor-not-allowed border border-white/20'
-                      : 'bg-rose-500 hover:bg-rose-400 text-white shadow-lg hover:-translate-y-0.5'
-                  }`}
-                >
+                    !hasCheckedIn || hasCheckedOut ? 'bg-white/10 text-white/50 cursor-not-allowed border border-white/20' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-lg hover:-translate-y-0.5'
+                  }`}>
                   <LogoutRoundedIcon sx={{ fontSize: 18 }} />
                   {hasCheckedOut ? 'Checked Out ✓' : 'Check Out'}
                   {showDailyStatusWarning && (
                     <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 border-2 border-blue-700 animate-pulse" />
                   )}
                 </button>
-
               </div>
             </div>
           </div>
@@ -899,10 +1040,8 @@ function EmployeeDashboardContent() {
                       </span>
                     </div>
                     <div className="relative w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className={`absolute left-0 top-0 h-2 rounded-full bg-gradient-to-r ${leave.color} transition-all duration-700`}
-                        style={{ width: `${Math.min((leave.used / leave.total) * 100, 100)}%` }}
-                      />
+                      <div className={`absolute left-0 top-0 h-2 rounded-full bg-gradient-to-r ${leave.color} transition-all duration-700`}
+                        style={{ width: `${Math.min((leave.used / leave.total) * 100, 100)}%` }} />
                     </div>
                     <p className="text-xs text-slate-400 mt-1">{leave.used} used of {leave.total} days</p>
                   </div>
@@ -914,9 +1053,7 @@ function EmployeeDashboardContent() {
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-base font-extrabold text-slate-900">Recent Attendance</h2>
-                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
-                  Last 14 days
-                </span>
+                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">Last 14 days</span>
               </div>
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
@@ -937,106 +1074,102 @@ function EmployeeDashboardContent() {
                     <CalendarMonthRoundedIcon sx={{ fontSize: 36, color: '#cbd5e1' }} />
                     <p className="text-slate-400 text-sm mt-2">No records yet</p>
                   </div>
-                ) : (
-                  enrichedRecentDays.map((day, i) => {
-                    const dateLabel = day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-
-                    if (day.type === 'weekly_off') return (
-                      <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                            <WeekendRoundedIcon sx={{ fontSize: 18, color: '#94a3b8' }} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-slate-500">{dateLabel}</p>
-                            <p className="text-[11px] text-slate-400">Sunday</p>
-                          </div>
+                ) : enrichedRecentDays.map((day, i) => {
+                  const dateLabel = day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                  if (day.type === 'weekly_off') return (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                          <WeekendRoundedIcon sx={{ fontSize: 18, color: '#94a3b8' }} />
                         </div>
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500">Weekly Off</span>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-500">{dateLabel}</p>
+                          <p className="text-[11px] text-slate-400">Sunday</p>
+                        </div>
                       </div>
-                    )
-
-                    if (day.type === 'holiday' && day.holiday) {
-                      const cfg = HOLIDAY_TYPE_CONFIG[day.holiday.type]
-                      return (
-                        <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${cfg.badge}`}>
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl ${cfg.badge} flex items-center justify-center shrink-0`}>
-                              <CelebrationRoundedIcon sx={{ fontSize: 18 }} className={cfg.text} />
-                            </div>
-                            <div>
-                              <p className={`text-sm font-semibold ${cfg.text}`}>{dateLabel}</p>
-                              <p className="text-[11px] text-slate-500 font-medium">{day.holiday.name}</p>
-                            </div>
-                          </div>
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${cfg.badge} ${cfg.text}`}>{cfg.label}</span>
-                        </div>
-                      )
-                    }
-
-                    if (day.type === 'on_leave') return (
-                      <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-amber-50 border border-amber-100">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                            <BeachAccessRoundedIcon sx={{ fontSize: 18, color: '#d97706' }} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-amber-700">{dateLabel}</p>
-                            <p className="text-[11px] text-amber-500">Approved Leave</p>
-                          </div>
-                        </div>
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">On Leave</span>
-                      </div>
-                    )
-
-                    if (day.type === 'attendance' && day.record) {
-                      const r  = day.record
-                      const ci = r.checkInTime  ? r.checkInTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
-                      const co = r.checkOutTime ? r.checkOutTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
-                      const wh = r.workHours ? formatWorkHours(r.workHours) : null
-                      const stillWorking = r.checkInTime && !r.checkOutTime
-                      return (
-                        <div key={i} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 shrink-0">
-                              {day.date.getDate()}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">{dateLabel}</p>
-                              <p className="text-[11px] text-slate-400 mt-0.5">
-                                {ci} → {co}{wh && ` · ${wh}`}
-                                {stillWorking && (
-                                  <span className="ml-1 inline-flex items-center gap-1 text-emerald-600 font-semibold">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />In progress
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Present</span>
-                        </div>
-                      )
-                    }
-
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500">Weekly Off</span>
+                    </div>
+                  )
+                  if (day.type === 'holiday' && day.holiday) {
+                    const cfg = HOLIDAY_TYPE_CONFIG[day.holiday.type]
                     return (
-                      <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-red-50/50 border border-red-50">
+                      <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${cfg.badge}`}>
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center text-sm font-bold text-red-400 shrink-0">
+                          <div className={`w-9 h-9 rounded-xl ${cfg.badge} flex items-center justify-center shrink-0`}>
+                            <CelebrationRoundedIcon sx={{ fontSize: 18 }} className={cfg.text} />
+                          </div>
+                          <div>
+                            <p className={`text-sm font-semibold ${cfg.text}`}>{dateLabel}</p>
+                            <p className="text-[11px] text-slate-500 font-medium">{day.holiday.name}</p>
+                          </div>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${cfg.badge} ${cfg.text}`}>{cfg.label}</span>
+                      </div>
+                    )
+                  }
+                  if (day.type === 'on_leave') return (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-amber-50 border border-amber-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                          <BeachAccessRoundedIcon sx={{ fontSize: 18, color: '#d97706' }} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-amber-700">{dateLabel}</p>
+                          <p className="text-[11px] text-amber-500">Approved Leave</p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">On Leave</span>
+                    </div>
+                  )
+                  if (day.type === 'attendance' && day.record) {
+                    const r  = day.record
+                    const ci = r.checkInTime  ? r.checkInTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
+                    const co = r.checkOutTime ? r.checkOutTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
+                    const wh = r.workHours ? formatWorkHours(r.workHours) : null
+                    const stillWorking = r.checkInTime && !r.checkOutTime
+                    return (
+                      <div key={i} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-sm font-bold text-emerald-700 shrink-0">
                             {day.date.getDate()}
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-slate-500">{dateLabel}</p>
-                            <p className="text-[11px] text-slate-400">No check-in recorded</p>
+                            <p className="text-sm font-semibold text-slate-800">{dateLabel}</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {ci} → {co}{wh && ` · ${wh}`}
+                              {stillWorking && (
+                                <span className="ml-1 inline-flex items-center gap-1 text-emerald-600 font-semibold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />In progress
+                                </span>
+                              )}
+                            </p>
                           </div>
                         </div>
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-500">Absent</span>
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Present</span>
                       </div>
                     )
-                  })
-                )}
+                  }
+                  return (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-red-50/50 border border-red-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center text-sm font-bold text-red-400 shrink-0">
+                          {day.date.getDate()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-500">{dateLabel}</p>
+                          <p className="text-[11px] text-slate-400">No check-in recorded</p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-500">Absent</span>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
+
+          {/* Birthday Panel */}
+          <BirthdayPanel birthdays={birthdays} />
 
           {/* Quick Actions */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
@@ -1047,13 +1180,10 @@ function EmployeeDashboardContent() {
                   <CalendarMonthRoundedIcon sx={{ fontSize: 18 }} />View Holidays
                 </button>
               </Link>
-
               {!isHREmployee && (
                 <Link href="/employee/daily-status">
                   <button className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:-translate-y-0.5 active:translate-y-0 border ${
-                    hasDailyStatus
-                      ? 'bg-slate-50 text-slate-500 border-slate-200'
-                      : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                    hasDailyStatus ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
                   }`}>
                     <AssignmentRoundedIcon sx={{ fontSize: 18 }} />
                     {hasDailyStatus ? 'Daily Status ✓' : 'Submit Daily Status'}

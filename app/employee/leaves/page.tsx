@@ -24,6 +24,107 @@ import AssignmentRoundedIcon         from '@mui/icons-material/AssignmentRounded
 import BeachAccessRoundedIcon        from '@mui/icons-material/BeachAccessRounded'
 import AccessTimeRoundedIcon         from '@mui/icons-material/AccessTimeRounded'
 import CancelRoundedIcon             from '@mui/icons-material/CancelRounded'
+import InfoRoundedIcon               from '@mui/icons-material/InfoRounded'
+import WarningAmberRoundedIcon       from '@mui/icons-material/WarningAmberRounded'
+import NotificationsActiveRoundedIcon from '@mui/icons-material/NotificationsActiveRounded'
+
+// ── Prior Notice Rules ─────────────────────────────────────────────────────────
+const leaveNoticeRules: Record<string, {
+  icon: React.ElementType
+  color: string
+  bgColor: string
+  borderColor: string
+  iconColor: string
+  title: string
+  message: string
+  minNoticeDays: number
+}> = {
+  casual: {
+    icon: InfoRoundedIcon,
+    color: 'text-blue-700',
+    bgColor: 'bg-blue-50/80',
+    borderColor: 'border-blue-200',
+    iconColor: '#2563eb',
+    title: 'Casual Leave Notice',
+    message: 'Minimum 1 day prior notice is required for casual leave.',
+    minNoticeDays: 1,
+  },
+  vacation: {
+    icon: WarningAmberRoundedIcon,
+    color: 'text-amber-700',
+    bgColor: 'bg-amber-50/80',
+    borderColor: 'border-amber-200',
+    iconColor: '#d97706',
+    title: 'Planned / Vacation Leave Notice',
+    message: 'Minimum 3 to 7 days prior notice is required for vacation or planned leave.',
+    minNoticeDays: 3,
+  },
+  sick: {      
+    icon: NotificationsActiveRoundedIcon,
+    color: 'text-rose-700',
+    bgColor: 'bg-rose-50/80',
+    borderColor: 'border-rose-200',
+    iconColor: '#e11d48',
+    title: 'Emergency / Medical Leave',
+    message: 'Please inform the team within 24 hours of absence whenever possible.',
+    minNoticeDays: 0,
+  },
+  personal: {
+    icon: InfoRoundedIcon,
+    color: 'text-violet-700',
+    bgColor: 'bg-violet-50/80',
+    borderColor: 'border-violet-200',
+    iconColor: '#7c3aed',
+    title: 'Personal Leave Notice',
+    message: 'Minimum 1 day prior notice is required for personal leave.',
+    minNoticeDays: 1,
+  },
+}
+
+// ── Notice Banner Component ────────────────────────────────────────────────────
+function LeaveNoticeBanner({
+  leaveType,
+  startDate,
+}: {
+  leaveType: string
+  startDate: string
+}) {
+  const rule = leaveNoticeRules[leaveType]
+  if (!rule) return null
+
+  const IconComponent = rule.icon
+
+  // Calculate notice days if startDate is set
+  let noticeWarning = ''
+  if (startDate && rule.minNoticeDays > 0) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const start = new Date(startDate)
+    start.setHours(0, 0, 0, 0)
+    const diffDays = Math.ceil((start.getTime() - today.getTime()) / 86400000)
+
+    if (diffDays < rule.minNoticeDays) {
+      if (leaveType === 'vacation') {
+        noticeWarning = `⚠️ Your start date is only ${diffDays} day${diffDays !== 1 ? 's' : ''} away. Vacation leave requires at least 3–7 days prior notice.`
+      } else {
+        noticeWarning = `⚠️ Your start date is only ${diffDays} day${diffDays !== 1 ? 's' : ''} away. This leave type requires at least ${rule.minNoticeDays} day prior notice.`
+      }
+    }
+  }
+
+  return (
+    <div className={`rounded-xl border ${rule.borderColor} ${rule.bgColor} px-4 py-3 flex flex-col gap-1.5`}>
+      <div className="flex items-center gap-2">
+        <IconComponent sx={{ fontSize: 16, color: rule.iconColor }} />
+        <p className={`text-xs font-bold ${rule.color}`}>{rule.title}</p>
+      </div>
+      <p className={`text-xs ${rule.color} opacity-90 leading-relaxed`}>{rule.message}</p>
+      {noticeWarning && (
+        <p className="text-xs font-semibold text-rose-600 mt-0.5 leading-snug">{noticeWarning}</p>
+      )}
+    </div>
+  )
+}
 
 // ── Sad Person Illustration ───────────────────────────────────────────────────
 function SadPersonIllustration() {
@@ -155,6 +256,22 @@ function EmployeeLeavesContent() {
         throw new Error('Please fill all required fields')
       const days = calculateDays()
       if (days < 1) throw new Error('End date must be after start date')
+
+      // ── Prior notice validation ───────────────────────────────────────────
+      const rule = leaveNoticeRules[formData.leaveType]
+      if (rule && rule.minNoticeDays > 0) {
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const start = new Date(formData.startDate); start.setHours(0, 0, 0, 0)
+        const noticeDays = Math.ceil((start.getTime() - today.getTime()) / 86400000)
+        if (noticeDays < rule.minNoticeDays) {
+          if (formData.leaveType === 'vacation') {
+            throw new Error(`Vacation leave requires at least 3 days prior notice. Your start date is only ${noticeDays} day(s) away.`)
+          } else {
+            throw new Error(`${formData.leaveType.charAt(0).toUpperCase() + formData.leaveType.slice(1)} leave requires at least ${rule.minNoticeDays} day prior notice.`)
+          }
+        }
+      }
+
       await createLeaveRequest({
         uid: userProfile.uid,
         employeeName: userProfile.name,
@@ -166,6 +283,7 @@ function EmployeeLeavesContent() {
         createdAt: Timestamp.now(),
         days,
       })
+      
       setSuccess('Leave request submitted successfully! 🎉')
       setFormData({ leaveType: 'casual', startDate: '', endDate: '', reason: '' })
       setShowForm(false)
@@ -179,9 +297,10 @@ function EmployeeLeavesContent() {
   // ── Nav items ─────────────────────────────────────────────────────────────────
   const navItems = [
     { href: '/employee/dashboard',        icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard'        },
-{ href: '/employee/MyProfile', icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />, label: 'My Profile' },    // { href: '/employee/leaves',           icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />,     label: 'Leave Requests'   },
-    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />, label: 'Holiday Calendar' },
-    { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status'     },
+    { href: '/employee/MyProfile',        icon: <PersonRoundedIcon sx={{ fontSize: 20 }} />,       label: 'My Profile'       },
+    { href: '/employee/leaves',           icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Leave Requests'   },
+    { href: '/employee/holiday-calendar', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 20 }} />,label: 'Holiday Calendar' },
+    { href: '/employee/daily-status',     icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Daily Status'     },
   ]
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -324,8 +443,8 @@ function EmployeeLeavesContent() {
                     <select name="leaveType" value={formData.leaveType} onChange={handleInputChange}
                       className="w-full h-11 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium backdrop-blur-sm focus:outline-none focus:border-white/50 focus:bg-white/20 transition-all">
                       <option value="casual"   className="text-slate-800">Casual Leave</option>
-                      <option value="sick"     className="text-slate-800">Sick Leave</option>
-                      <option value="vacation" className="text-slate-800">Vacation</option>
+                      <option value="sick"     className="text-slate-800">Sick / Emergency Leave</option>
+                      <option value="vacation" className="text-slate-800">Planned / Vacation Leave</option>
                       <option value="personal" className="text-slate-800">Personal Leave</option>
                     </select>
                   </div>
@@ -346,6 +465,10 @@ function EmployeeLeavesContent() {
                       className="w-full h-11 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium focus:outline-none focus:border-white/50 focus:bg-white/20 transition-all [color-scheme:dark]" />
                   </div>
                 </div>
+
+                {/* ── Prior Notice Reminder Banner ──────────────────────────────── */}
+                <LeaveNoticeBanner leaveType={formData.leaveType} startDate={formData.startDate} />
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-blue-200">Reason</label>
                   <textarea name="reason" value={formData.reason} onChange={handleInputChange} required

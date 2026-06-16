@@ -31,6 +31,16 @@ import WarningAmberRoundedIcon   from '@mui/icons-material/WarningAmberRounded'
 import AssignmentRoundedIcon    from '@mui/icons-material/AssignmentRounded'
 import SpeedRoundedIcon          from '@mui/icons-material/SpeedRounded'
 
+// ── IST-safe local date string ────────────────────────────────────────────────
+// FIX: toISOString() returns UTC — in IST (+5:30) this gives the wrong date.
+// Always use local year/month/day parts instead.
+function getLocalDateString(date: Date = new Date()): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 // ── Sad Person Illustration ───────────────────────────────────────────────────
 function SadPersonIllustration() {
   return (
@@ -130,10 +140,10 @@ function timeAgo(ts: any): string {
 // ── Main Content ──────────────────────────────────────────────────────────────
 function AdminDashboardContent() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [users, setUsers]       = useState<UserProfile[]>([])
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([])
-  const [leaves, setLeaves]     = useState<LeaveRequest[]>([])
-  const [now, setNow]           = useState(new Date())
+  const [users, setUsers]             = useState<UserProfile[]>([])
+  const [attendance, setAttendance]   = useState<AttendanceRecord[]>([])
+  const [leaves, setLeaves]           = useState<LeaveRequest[]>([])
+  const [now, setNow]                 = useState(new Date())
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [logoutLoading, setLogoutLoading]         = useState(false)
 
@@ -143,6 +153,7 @@ function AdminDashboardContent() {
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t)
   }, [])
+
   useEffect(() => {
     const u1 = subscribeToUsers(setUsers)
     const u2 = subscribeToAttendance(setAttendance)
@@ -156,28 +167,53 @@ function AdminDashboardContent() {
     catch (err) { console.error(err); setLogoutLoading(false); setShowLogoutConfirm(false) }
   }
 
-  const employees     = useMemo(() => users.filter(u => u.role === 'employee'), [users])
-  const todayStr      = now.toDateString()
-  const todayAtt      = useMemo(() => attendance.filter(a => { try { return a.date.toDate().toDateString() === todayStr } catch { return false } }), [attendance, todayStr])
-  const nameMap       = useMemo(() => { const m = new Map<string, UserProfile>(); users.forEach(u => m.set(u.uid, u)); return m }, [users])
-  const todayAttMap   = useMemo(() => {
+  const employees = useMemo(() => users.filter(u => u.role === 'employee'), [users])
+
+  // FIX: Use toDateString() for same-day comparison (timezone-safe for local display)
+  const todayStr = now.toDateString()
+  const todayAtt = useMemo(() =>
+    attendance.filter(a => { try { return a.date.toDate().toDateString() === todayStr } catch { return false } }),
+    [attendance, todayStr]
+  )
+
+  const nameMap = useMemo(() => {
+    const m = new Map<string, UserProfile>()
+    users.forEach(u => m.set(u.uid, u))
+    return m
+  }, [users])
+
+  const todayAttMap = useMemo(() => {
     const m = new Map<string, AttendanceRecord>()
     todayAtt.forEach(a => {
       const ex = m.get(a.uid)
       if (!ex) { m.set(a.uid, a); return }
       try { if (a.date.toDate().getTime() > ex.date.toDate().getTime()) m.set(a.uid, a) } catch { m.set(a.uid, a) }
-    }); return m
+    })
+    return m
   }, [todayAtt])
 
   const presentCount    = Array.from(todayAttMap.values()).filter(a => a.checkInTime).length
   const checkedOutCount = Array.from(todayAttMap.values()).filter(a => a.checkInTime && a.checkOutTime).length
-  const absentCount     = Math.max(0, employees.length - presentCount)
-  const onLeaveCount    = leaves.filter(l => {
+
+  // FIX 1: Use IST-safe getLocalDateString() instead of toISOString().split('T')[0]
+  const onLeaveCount = leaves.filter(l => {
     if (l.status !== 'approved') return false
-    const today = now.toISOString().split('T')[0]
-    try { const s = l.startDate.toDate().toISOString().split('T')[0], e = l.endDate.toDate().toISOString().split('T')[0]; return today >= s && today <= e } catch { return false }
+    const today = getLocalDateString(now) // ← was: now.toISOString().split('T')[0]
+    try {
+      const s = getLocalDateString(l.startDate.toDate()) // ← was: toISOString().split('T')[0]
+      const e = getLocalDateString(l.endDate.toDate())   // ← was: toISOString().split('T')[0]
+      return today >= s && today <= e
+    } catch { return false }
   }).length
-  const attendancePct = employees.length > 0 ? Math.round((presentCount / employees.length) * 100) : 0
+
+  // FIX 2: Subtract onLeaveCount from absentCount — on-leave employees are not absent
+  const absentCount = Math.max(0, employees.length - presentCount - onLeaveCount)
+
+  // FIX 3: Exclude on-leave employees from denominator, cap at 100
+  const workingEmployees = Math.max(1, employees.length - onLeaveCount)
+  const attendancePct    = employees.length > 0
+    ? Math.min(100, Math.round((presentCount / workingEmployees) * 100))
+    : 0
 
   const liveActivity = useMemo(() => {
     const events: { type: 'in' | 'out'; ts: any; name: string; dept: string }[] = []
@@ -186,32 +222,40 @@ function AdminDashboardContent() {
       if (a.checkInTime)  events.push({ type: 'in',  ts: a.checkInTime,  name: u?.name || 'Unknown', dept: u?.department || '' })
       if (a.checkOutTime) events.push({ type: 'out', ts: a.checkOutTime, name: u?.name || 'Unknown', dept: u?.department || '' })
     })
-    return events.sort((a, b) => { try { return b.ts.toDate().getTime() - a.ts.toDate().getTime() } catch { return 0 } }).slice(0, 15)
+    return events
+      .sort((a, b) => { try { return b.ts.toDate().getTime() - a.ts.toDate().getTime() } catch { return 0 } })
+      .slice(0, 15)
   }, [todayAtt, nameMap])
 
   const todaySummary = useMemo(() =>
-    employees.map(e => ({ uid: e.uid, name: e.name, dept: e.department || '—', att: todayAttMap.get(e.uid) || null }))
-      .sort((a, b) => { if (a.att?.checkInTime && !b.att?.checkInTime) return -1; if (!a.att?.checkInTime && b.att?.checkInTime) return 1; return a.name.localeCompare(b.name) }),
-    [employees, todayAttMap])
+    employees
+      .map(e => ({ uid: e.uid, name: e.name, dept: e.department || '—', att: todayAttMap.get(e.uid) || null }))
+      .sort((a, b) => {
+        if (a.att?.checkInTime && !b.att?.checkInTime) return -1
+        if (!a.att?.checkInTime && b.att?.checkInTime) return 1
+        return a.name.localeCompare(b.name)
+      }),
+    [employees, todayAttMap]
+  )
 
   const pendingLeaves = useMemo(() => leaves.filter(l => l.status === 'pending').slice(0, 5), [leaves])
 
   const navItems = [
-    { href: '/admin/dashboard', icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Dashboard',      active: true  },
-    { href: '/admin/employees', icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Employees',      active: false },
-    { href: '/admin/attendance',icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,label: 'Attendance',     active: false },
-    // { href: '/admin/leaves',    icon: <EventNoteRoundedIcon sx={{ fontSize: 20 }} />, label: 'Leave Requests', active: false },
-    {href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />, label: 'Daily Status', active: false },
-    { href: '/admin/settings',  icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,  label: 'Settings',       active: false },
+    { href: '/admin/dashboard',    icon: <DashboardRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Dashboard',      active: true  },
+    { href: '/admin/employees',    icon: <PeopleRoundedIcon sx={{ fontSize: 20 }} />,        label: 'Employees',      active: false },
+    { href: '/admin/attendance',   icon: <AccessTimeRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Attendance',     active: false },
+    { href: '/admin/leaves',       icon: <BeachAccessRoundedIcon sx={{ fontSize: 20 }} />,   label: 'Leave Requests', active: false },
+    { href: '/admin/daily-status', icon: <AssignmentRoundedIcon sx={{ fontSize: 20 }} />,    label: 'Daily Status',   active: false },
+    { href: '/admin/settings',     icon: <SettingsRoundedIcon sx={{ fontSize: 20 }} />,      label: 'Settings',       active: false },
   ]
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
 
       <ConfirmModal
-        show={showLogoutConfirm}  onClose={() => setShowLogoutConfirm(false)}
+        show={showLogoutConfirm}   onClose={() => setShowLogoutConfirm(false)}
         onConfirm={handleLogoutConfirmed} illustration={<SadPersonIllustration />}
-        title="Comeback Soon!"    subtitle="Are you sure you want to logout?"
+        title="Comeback Soon!"     subtitle="Are you sure you want to logout?"
         confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700"
         loading={logoutLoading}
       />
@@ -287,11 +331,31 @@ function AdminDashboardContent() {
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <StatCard icon={<PeopleRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />} label="Total" value={employees.length} sub="employees" gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900" iconBg="bg-blue-200" />
-            <StatCard icon={<CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />} label="Present" value={presentCount} sub={`${attendancePct}% rate`} gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900" iconBg="bg-emerald-200" />
-            <StatCard icon={<CancelRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />} label="Absent" value={absentCount} sub="not checked in" gradient="bg-gradient-to-br from-red-50 to-red-100 text-red-900" iconBg="bg-red-200" />
-            <StatCard icon={<BeachAccessRoundedIcon sx={{ fontSize: 20, color: '#d97706' }} />} label="On Leave" value={onLeaveCount} sub="approved today" gradient="bg-gradient-to-br from-amber-50 to-amber-100 text-amber-900" iconBg="bg-amber-200" />
-            <StatCard icon={<HowToRegRoundedIcon sx={{ fontSize: 20, color: '#7c3aed' }} />} label="Checked Out" value={checkedOutCount} sub="done for today" gradient="bg-gradient-to-br from-violet-50 to-violet-100 text-violet-900" iconBg="bg-violet-200" />
+            <StatCard
+              icon={<PeopleRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />}
+              label="Total" value={employees.length} sub="employees"
+              gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900" iconBg="bg-blue-200"
+            />
+            <StatCard
+              icon={<CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />}
+              label="Present" value={presentCount} sub={`${attendancePct}% rate`}
+              gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900" iconBg="bg-emerald-200"
+            />
+            <StatCard
+              icon={<CancelRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />}
+              label="Absent" value={absentCount} sub="not checked in"
+              gradient="bg-gradient-to-br from-red-50 to-red-100 text-red-900" iconBg="bg-red-200"
+            />
+            <StatCard
+              icon={<BeachAccessRoundedIcon sx={{ fontSize: 20, color: '#d97706' }} />}
+              label="On Leave" value={onLeaveCount} sub="approved today"
+              gradient="bg-gradient-to-br from-amber-50 to-amber-100 text-amber-900" iconBg="bg-amber-200"
+            />
+            <StatCard
+              icon={<HowToRegRoundedIcon sx={{ fontSize: 20, color: '#7c3aed' }} />}
+              label="Checked Out" value={checkedOutCount} sub="done for today"
+              gradient="bg-gradient-to-br from-violet-50 to-violet-100 text-violet-900" iconBg="bg-violet-200"
+            />
           </div>
 
           {/* Attendance Rate Bar */}
@@ -304,7 +368,10 @@ function AdminDashboardContent() {
               <span className="text-2xl font-black text-blue-600">{attendancePct}%</span>
             </div>
             <div className="w-full bg-slate-100 rounded-full h-3">
-              <div className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-700" style={{ width: `${attendancePct}%` }} />
+              <div
+                className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-700"
+                style={{ width: `${attendancePct}%` }}
+              />
             </div>
             <div className="flex justify-between mt-2 text-xs text-slate-400 font-medium">
               <span>{presentCount} present</span>
@@ -334,7 +401,9 @@ function AdminDashboardContent() {
                   const initials = ev.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
                   return (
                     <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${ev.type === 'in' ? 'bg-green-500' : 'bg-slate-400'}`}>{initials}</div>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${ev.type === 'in' ? 'bg-green-500' : 'bg-slate-400'}`}>
+                        {initials}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate">{ev.name}</p>
                         <p className="text-xs text-slate-400">{ev.type === 'in' ? '🟢 Checked in' : '🔴 Checked out'} · {formatTime(ev.ts)}</p>
@@ -363,7 +432,7 @@ function AdminDashboardContent() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        {['Employee','Check In','Check Out','Hours','Status'].map(h => (
+                        {['Employee', 'Check In', 'Check Out', 'Hours', 'Status'].map(h => (
                           <th key={h} className="px-4 py-2.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
@@ -387,11 +456,15 @@ function AdminDashboardContent() {
                               </div>
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-600">{formatTime(row.att?.checkInTime)}</td>
-                            <td className="px-4 py-3 text-xs text-slate-600">{checkedOut ? formatTime(row.att?.checkOutTime) : <span className="text-slate-300">—</span>}</td>
-                            <td className="px-4 py-3 text-xs font-semibold text-slate-700">{formatWorkHours(row.att?.checkInTime, row.att?.checkOutTime)}</td>
+                            <td className="px-4 py-3 text-xs text-slate-600">
+                              {checkedOut ? formatTime(row.att?.checkOutTime) : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-xs font-semibold text-slate-700">
+                              {formatWorkHours(row.att?.checkInTime, row.att?.checkOutTime)}
+                            </td>
                             <td className="px-4 py-3">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                status === 'Done'    ? 'bg-blue-100 text-blue-700' :
+                                status === 'Done'    ? 'bg-blue-100 text-blue-700'  :
                                 status === 'Working' ? 'bg-green-100 text-green-700' :
                                                        'bg-red-100 text-red-600'
                               }`}>
@@ -448,9 +521,8 @@ function AdminDashboardContent() {
               <h2 className="font-extrabold text-slate-900 text-sm mb-4">Quick Actions</h2>
               <div className="space-y-2">
                 {[
-                  { label: 'Manage Employees', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />,     href: '/admin/employees' },
+                  { label: 'Manage Employees', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />,     href: '/admin/employees'  },
                   { label: 'View Attendance',  icon: <AccessTimeRoundedIcon sx={{ fontSize: 18 }} />, href: '/admin/attendance' },
-                  // { label: 'Approve Leaves',   icon: <EventNoteRoundedIcon sx={{ fontSize: 18 }} />,  href: '/admin/leaves' },
                 ].map(a => (
                   <Link key={a.label} href={a.href}>
                     <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-all text-sm font-semibold hover:-translate-y-0.5 active:translate-y-0">
