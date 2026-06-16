@@ -26,5 +26,5 @@ export const secondaryAuth = getAuth(secondaryApp)
 export const db = getFirestore(app)
 
 
-export const DEV = process.env.NEXT_PUBLIC_ENV !== 'production'
+export const DEV = process.env.NODE_ENV === 'development'
 export default app
