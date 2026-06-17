@@ -640,6 +640,8 @@ function EmployeeDashboardContent() {
       setCheckingMissed(true)
       try {
         const result = await getPreviousMissingCheckout(userProfile.uid)
+        console.log('Logged in UID:', userProfile.uid)
+console.log('Missing checkout result:', result)
         setMissingCheckout(result)
       } catch (err) {
         console.error('Missing checkout check error:', err)
