@@ -642,6 +642,10 @@ function EmployeeDashboardContent() {
         const result = await getPreviousMissingCheckout(userProfile.uid)
         console.log('Logged in UID:', userProfile.uid)
 console.log('Missing checkout result:', result)
+
+console.log(
+  result?.date?.toDate().toLocaleString('en-IN')
+)
         setMissingCheckout(result)
       } catch (err) {
         console.error('Missing checkout check error:', err)
@@ -1025,7 +1029,7 @@ console.log('Missing checkout result:', result)
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             {/* Leave Balance */}
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+            {/* <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-base font-extrabold text-slate-900">Leave Balance</h2>
                 <span className="text-xs font-semibold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200">
@@ -1049,7 +1053,7 @@ console.log('Missing checkout result:', result)
                   </div>
                 ))}
               </div>
-            </div>
+            </div> */}
 
             {/* Recent Attendance */}
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
