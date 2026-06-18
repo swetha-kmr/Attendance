@@ -96,6 +96,18 @@ const TYPE_CONFIG: Record<HolidayType, { label: string; dot: string; badge: stri
   weekly_off: { label: 'Weekly Off (Sunday)', dot: 'bg-slate-400',   badge: 'bg-slate-100',   text: 'text-slate-600'   },
 }
 
+// Fallback used when a holiday doc has a missing/unrecognized `type`
+const FALLBACK_TYPE_CONFIG = {
+  label: 'Holiday',
+  dot: 'bg-slate-400',
+  badge: 'bg-slate-100',
+  text: 'text-slate-600',
+}
+
+function getTypeConfig(type?: HolidayType) {
+  return (type && TYPE_CONFIG[type]) || FALLBACK_TYPE_CONFIG
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() &&
@@ -113,7 +125,7 @@ function getFirstDayOfMonth(year: number, month: number) {
 
 // ── Holiday dot ───────────────────────────────────────────────────────────────
 function HolidayDot({ type }: { type: HolidayType }) {
-  return <span className={`inline-block w-1.5 h-1.5 rounded-full ${TYPE_CONFIG[type].dot}`} />
+  return <span className={`inline-block w-1.5 h-1.5 rounded-full ${getTypeConfig(type).dot}`} />
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -494,15 +506,18 @@ function HolidayCalendarContent() {
                     <p className="text-sm font-bold text-blue-900 mb-1">
                       {selectedDay.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                     </p>
-                    {selectedDayHolidays.map((h, i) => (
-                      <div key={i} className="flex items-center gap-2 mt-1">
-                        <HolidayDot type={h.type} />
-                        <span className="text-sm font-semibold text-blue-800">{h.name}</span>
-                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${TYPE_CONFIG[h.type].badge} ${TYPE_CONFIG[h.type].text}`}>
-                          {TYPE_CONFIG[h.type].label}
-                        </span>
-                      </div>
-                    ))}
+                    {selectedDayHolidays.map((h, i) => {
+                      const cfg = getTypeConfig(h.type)
+                      return (
+                        <div key={i} className="flex items-center gap-2 mt-1">
+                          <HolidayDot type={h.type} />
+                          <span className="text-sm font-semibold text-blue-800">{h.name}</span>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${cfg.badge} ${cfg.text}`}>
+                            {cfg.label}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -550,7 +565,7 @@ function HolidayCalendarContent() {
                       ) : (
                         listHolidays.map((h, i) => {
                           const d   = h.date.toDate()
-                          const cfg = TYPE_CONFIG[h.type]
+                          const cfg = getTypeConfig(h.type)
                           return (
                             <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                               <td className="px-6 py-3 font-semibold text-slate-700">
@@ -606,7 +621,7 @@ function HolidayCalendarContent() {
                   ) : (
                     upcomingHolidays.map((h, i) => {
                       const d   = h.date.toDate()
-                      const cfg = TYPE_CONFIG[h.type]
+                      const cfg = getTypeConfig(h.type)
                       return (
                         <div
                           key={i}
