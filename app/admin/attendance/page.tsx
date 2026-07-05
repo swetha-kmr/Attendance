@@ -62,6 +62,15 @@ export interface Holiday {
   type: HolidayType
 }
 
+// FIX: Any holiday doc whose `type` field is missing, misspelled, wrong-cased,
+// or otherwise not one of the four valid HolidayType values gets normalized to
+// 'public' here — at the data-fetch boundary — instead of crashing later when
+// HOLIDAY_CFG[type] is looked up and comes back undefined.
+const VALID_HOLIDAY_TYPES: HolidayType[] = ['public', 'festival', 'national', 'weekly_off']
+function normalizeHolidayType(t: unknown): HolidayType {
+  return VALID_HOLIDAY_TYPES.includes(t as HolidayType) ? (t as HolidayType) : 'public'
+}
+
 async function fetchHolidaysByRange(start: Date, end: Date): Promise<Holiday[]> {
   const q = query(
     collection(db, 'holidays'),
@@ -70,7 +79,10 @@ async function fetchHolidaysByRange(start: Date, end: Date): Promise<Holiday[]> 
     orderBy('date', 'asc'),
   )
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Holiday))
+  return snap.docs.map(d => {
+    const data = d.data()
+    return { id: d.id, ...data, type: normalizeHolidayType(data.type) } as Holiday
+  })
 }
 
 const HOLIDAY_CFG: Record<HolidayType, { badge: string; text: string; dot: string; label: string }> = {
@@ -357,7 +369,9 @@ function StatusBadge({ record }: { record: FlatRecord }) {
     )
   }
   if (record.status === 'Holiday') {
-    const cfg = HOLIDAY_CFG[record.holidayType ?? 'public']
+    // FIX: guaranteed non-undefined cfg even if record.holidayType is missing
+    // or holds an unexpected/invalid value — falls back to the 'public' config.
+    const cfg = HOLIDAY_CFG[record.holidayType ?? 'public'] ?? HOLIDAY_CFG.public
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${cfg.badge} ${cfg.text}`}>
         <CelebrationRoundedIcon sx={{ fontSize: 11 }} />
@@ -470,7 +484,7 @@ function AttendanceContent() {
         }
         const holiday = holidays.find(h => sameDayStr(h.date.toDate(), date))
         if (holiday) {
-          result.push({ uid: emp.uid, name: emp.name, email: emp.email, department: dept, date, checkIn: '—', checkOut: '—', workHours: '—', status: 'Holiday', holidayName: holiday.name, holidayType: holiday.type })
+          result.push({ uid: emp.uid, name: emp.name, email: emp.email, department: dept, date, checkIn: '—', checkOut: '—', workHours: '—', status: 'Holiday', holidayName: holiday.name, holidayType: normalizeHolidayType(holiday.type) })
           continue
         }
         if (onLeaveKeys.has(key)) {
