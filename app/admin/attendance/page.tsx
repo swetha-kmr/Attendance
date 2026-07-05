@@ -51,6 +51,7 @@ import WeekendRoundedIcon        from '@mui/icons-material/WeekendRounded'
 import CelebrationRoundedIcon    from '@mui/icons-material/CelebrationRounded'
 import SaveRoundedIcon           from '@mui/icons-material/SaveRounded'
 import WarningRoundedIcon        from '@mui/icons-material/WarningRounded'
+import WarningAmberRoundedIcon   from '@mui/icons-material/WarningAmberRounded'
 
 // ── Holiday Types ─────────────────────────────────────────────────────────────
 export type HolidayType = 'public' | 'festival' | 'national' | 'weekly_off'
@@ -95,6 +96,7 @@ interface FlatRecord {
   firestoreId?: string  // attendance doc id (for editing)
   holidayName?: string  // if status === 'Holiday'
   holidayType?: HolidayType
+  autoFlagged?: boolean // true when the system (not admin) marked this Absent because checkout was missed
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -138,8 +140,8 @@ function getLeaveUid(l: LeaveRequest): string {
   return (l as any).uid || (l as any).userId || ''
 }
 function exportCSV(rows: FlatRecord[], startDate: string, endDate: string) {
-  const header = ['Name', 'Email', 'Department', 'Date', 'Check In', 'Check Out', 'Work Hours', 'Status']
-  const lines  = rows.map(r => [r.name, r.email, r.department, r.date, r.checkIn, r.checkOut, r.workHours, r.status].join(','))
+  const header = ['Name', 'Email', 'Department', 'Date', 'Check In', 'Check Out', 'Work Hours', 'Status', 'Auto-Flagged']
+  const lines  = rows.map(r => [r.name, r.email, r.department, r.date, r.checkIn, r.checkOut, r.workHours, r.status, r.autoFlagged ? 'Yes' : 'No'].join(','))
   const blob   = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
   const url    = URL.createObjectURL(blob)
   const a      = document.createElement('a'); a.href = url
@@ -151,17 +153,22 @@ const DEPARTMENTS       = ['Engineering', 'HR', 'Finance', 'Marketing', 'Operati
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50]
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, sub, gradient, iconBg }: {
+function StatCard({ icon, label, value, sub, gradient, iconBg, onClick, active }: {
   icon: React.ReactNode; label: string; value: number | string; sub: string; gradient: string; iconBg: string
+  onClick?: () => void; active?: boolean
 }) {
+  const Wrapper = onClick ? 'button' : 'div'
   return (
-    <div className={`rounded-2xl p-5 ${gradient} relative overflow-hidden group`}>
+    <Wrapper
+      onClick={onClick}
+      className={`rounded-2xl p-5 ${gradient} relative overflow-hidden group text-left w-full ${onClick ? 'cursor-pointer transition-all hover:-translate-y-0.5' : ''} ${active ? 'ring-2 ring-offset-2 ring-amber-400' : ''}`}
+    >
       <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/10 group-hover:scale-125 transition-transform duration-500" />
       <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center mb-4`}>{icon}</div>
       <p className="text-xs font-semibold uppercase tracking-wider opacity-70 mb-1">{label}</p>
       <p className="text-2xl font-black">{value}</p>
       <p className="text-xs opacity-60 mt-0.5">{sub}</p>
-    </div>
+    </Wrapper>
   )
 }
 
@@ -254,6 +261,18 @@ function EditModal({
             <CloseRoundedIcon sx={{ fontSize: 18, color: '#64748b' }} />
           </button>
         </div>
+
+        {/* Auto-flagged notice */}
+        {record.autoFlagged && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-semibold flex items-start gap-2">
+            <WarningAmberRoundedIcon sx={{ fontSize: 15, color: '#d97706', flexShrink: 0, mt: '1px' }} />
+            <span>
+              The employee checked in at <strong>{record.checkIn}</strong> but never checked out, so the system auto-marked this day
+              as <strong>Absent</strong>. If this was just a forgotten checkout, set Status to <strong>Present</strong> and fill in the
+              Check Out time below.
+            </span>
+          </div>
+        )}
 
         {/* Non-editable notice */}
         {isNonEditable && (
@@ -378,11 +397,12 @@ function AttendanceContent() {
   const [startDate, setStartDate] = useState(today)
   const [endDate,   setEndDate]   = useState(today)
 
-  const [empFilter,    setEmpFilter]    = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [deptFilter,   setDeptFilter]   = useState('all')
-  const [currentPage,  setCurrentPage]  = useState(1)
-  const [pageSize,     setPageSize]     = useState(10)
+  const [empFilter,       setEmpFilter]       = useState('all')
+  const [statusFilter,    setStatusFilter]    = useState('all')
+  const [deptFilter,      setDeptFilter]      = useState('all')
+  const [autoFlaggedOnly, setAutoFlaggedOnly] = useState(false)
+  const [currentPage,     setCurrentPage]     = useState(1)
+  const [pageSize,        setPageSize]        = useState(10)
 
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
@@ -404,7 +424,7 @@ function AttendanceContent() {
     fetchHolidaysByRange(start, end).then(setHolidays)
   }, [startDate, endDate])
 
-  useEffect(() => { setCurrentPage(1) }, [startDate, endDate, empFilter, statusFilter, deptFilter])
+  useEffect(() => { setCurrentPage(1) }, [startDate, endDate, empFilter, statusFilter, deptFilter, autoFlaggedOnly])
 
   // ── Build flat records ────────────────────────────────────────────────────
   const records: FlatRecord[] = useMemo(() => {
@@ -459,13 +479,19 @@ function AttendanceContent() {
         }
         const att = attMap.get(key)
         if (att) {
+          // System auto-marks a record Absent (status === 'absent', autoFlagged === true)
+          // when the employee checked in but never checked out. Surface that distinctly
+          // so admin knows this needs a human review, not a genuine no-show.
+          const isAutoFlagged = (att as any).status === 'absent' && !!(att as any).autoFlagged
+          const derivedStatus: RowStatus = (att as any).status === 'absent' ? 'Absent' : 'Present'
           result.push({
             uid: emp.uid, name: emp.name, email: emp.email, department: dept, date,
             checkIn:   formatTime(att.checkInTime),
             checkOut:  formatTime(att.checkOutTime),
-            workHours: calcWorkHours(att.checkInTime, att.checkOutTime),
-            status: 'Present',
+            workHours: isAutoFlagged ? 'Missed checkout' : calcWorkHours(att.checkInTime, att.checkOutTime),
+            status: derivedStatus,
             firestoreId: att.id,
+            autoFlagged: isAutoFlagged,
           })
           continue
         }
@@ -481,31 +507,33 @@ function AttendanceContent() {
       const matchesEmp    = empFilter    === 'all' || r.uid === empFilter
       const matchesStatus = statusFilter === 'all' || r.status.trim().toLowerCase() === statusFilter.trim().toLowerCase()
       const matchesDept   = deptFilter   === 'all' || r.department.trim().toLowerCase() === deptFilter.trim().toLowerCase()
-      return matchesEmp && matchesStatus && matchesDept
+      const matchesFlag   = !autoFlaggedOnly || !!r.autoFlagged
+      return matchesEmp && matchesStatus && matchesDept && matchesFlag
     })
-  }, [records, empFilter, statusFilter, deptFilter])
+  }, [records, empFilter, statusFilter, deptFilter, autoFlaggedOnly])
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated  = useMemo(() => filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize), [filtered, currentPage, pageSize])
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  const workingRecords = records.filter(r => r.status !== 'Weekly Off' && r.status !== 'Holiday')
-  const total          = workingRecords.length
-  const present        = records.filter(r => r.status === 'Present').length
-  const absent         = records.filter(r => r.status === 'Absent').length
-  const onLeave        = records.filter(r => r.status === 'On Leave').length
-  const weeklyOffs     = records.filter(r => r.status === 'Weekly Off').length
-  const publicHolidays = records.filter(r => r.status === 'Holiday').length
-  const attendancePct  = total > 0 ? Math.round((present / total) * 100) : 0
+  const workingRecords    = records.filter(r => r.status !== 'Weekly Off' && r.status !== 'Holiday')
+  const total              = workingRecords.length
+  const present            = records.filter(r => r.status === 'Present').length
+  const absent             = records.filter(r => r.status === 'Absent').length
+  const onLeave            = records.filter(r => r.status === 'On Leave').length
+  const weeklyOffs         = records.filter(r => r.status === 'Weekly Off').length
+  const publicHolidays     = records.filter(r => r.status === 'Holiday').length
+  const needsReviewCount   = records.filter(r => r.autoFlagged).length
+  const attendancePct      = total > 0 ? Math.round((present / total) * 100) : 0
 
   const isRange         = startDate !== endDate
   const headerDateLabel = isRange
     ? `${new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} → ${new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
     : new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
-  const activeFilterCount = [empFilter !== 'all', statusFilter !== 'all', deptFilter !== 'all'].filter(Boolean).length
-  const handleClearFilters = () => { setEmpFilter('all'); setStatusFilter('all'); setDeptFilter('all') }
+  const activeFilterCount = [empFilter !== 'all', statusFilter !== 'all', deptFilter !== 'all', autoFlaggedOnly].filter(Boolean).length
+  const handleClearFilters = () => { setEmpFilter('all'); setStatusFilter('all'); setDeptFilter('all'); setAutoFlaggedOnly(false) }
   const handleLogout = async () => { await signOut(); router.push('/') }
 
   // ── Save edited record ────────────────────────────────────────────────────
@@ -557,6 +585,9 @@ function AttendanceContent() {
           checkInTime:  checkInTs,
           checkOutTime: checkOutTs,
           workHours,
+          // Admin has now reviewed this record — clear the auto-flag either way,
+          // whether they confirmed it as Present or kept it as Absent.
+          autoFlagged:  false,
         })
       } else {
         await addDoc(collection(db, 'attendance'), {
@@ -568,6 +599,7 @@ function AttendanceContent() {
           checkOutTime: checkOutTs,
           workHours,
           createdBy:    'admin',
+          autoFlagged:  false,
         })
       }
 
@@ -714,8 +746,26 @@ function AttendanceContent() {
             </div>
           )}
 
+          {/* Needs-review banner (only when there are auto-flagged records and the filter isn't already applied) */}
+          {needsReviewCount > 0 && !autoFlaggedOnly && (
+            <button
+              onClick={() => setAutoFlaggedOnly(true)}
+              className="w-full flex items-center gap-3 p-4 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-2xl text-left transition-colors"
+            >
+              <WarningAmberRoundedIcon sx={{ fontSize: 20, color: '#d97706', flexShrink: 0 }} />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-700">
+                  {needsReviewCount} record{needsReviewCount > 1 ? 's' : ''} need{needsReviewCount > 1 ? '' : 's'} review
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  These were auto-marked Absent because the employee forgot to check out. Tap to review and fix.
+                </p>
+              </div>
+            </button>
+          )}
+
           {/* ── Stat Cards ── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard icon={<PeopleRoundedIcon sx={{ fontSize: 20, color: '#2563eb' }} />}           label="Total"       value={records.length}  sub="all rows"             gradient="bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900"         iconBg="bg-blue-200"   />
             <StatCard icon={<CheckCircleRoundedIcon sx={{ fontSize: 20, color: '#16a34a' }} />}      label="Present"     value={present}          sub={`${attendancePct}%`}  gradient="bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-900" iconBg="bg-emerald-200" />
             <StatCard icon={<CancelRoundedIcon sx={{ fontSize: 20, color: '#dc2626' }} />}           label="Absent"      value={absent}           sub="no check-in"          gradient="bg-gradient-to-br from-red-50 to-red-100 text-red-900"             iconBg="bg-red-200"    />
@@ -723,6 +773,16 @@ function AttendanceContent() {
             <StatCard icon={<HowToRegRoundedIcon sx={{ fontSize: 20, color: '#7c3aed' }} />}         label="Checked Out" value={records.filter(r => r.status === 'Present' && r.checkOut !== '—').length} sub="done for day" gradient="bg-gradient-to-br from-violet-50 to-violet-100 text-violet-900" iconBg="bg-violet-200" />
             <StatCard icon={<WeekendRoundedIcon sx={{ fontSize: 20, color: '#64748b' }} />}          label="Weekly Off"  value={weeklyOffs}       sub="Sundays"              gradient="bg-gradient-to-br from-slate-50 to-slate-100 text-slate-700"       iconBg="bg-slate-200"  />
             <StatCard icon={<CelebrationRoundedIcon sx={{ fontSize: 20, color: '#0ea5e9' }} />}      label="Holidays"    value={publicHolidays}   sub="admin holidays"       gradient="bg-gradient-to-br from-sky-50 to-sky-100 text-sky-900"             iconBg="bg-sky-200"    />
+            <StatCard
+              icon={<WarningAmberRoundedIcon sx={{ fontSize: 20, color: '#d97706' }} />}
+              label="Needs Review"
+              value={needsReviewCount}
+              sub="missed checkouts"
+              gradient="bg-gradient-to-br from-amber-50 to-orange-100 text-amber-900"
+              iconBg="bg-amber-200"
+              onClick={() => setAutoFlaggedOnly(v => !v)}
+              active={autoFlaggedOnly}
+            />
           </div>
 
           {/* ── Attendance Rate Bar ── */}
@@ -751,8 +811,17 @@ function AttendanceContent() {
               {activeFilterCount > 0 && (
                 <span className="ml-1 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full">{activeFilterCount} active</span>
               )}
+              <button
+                onClick={() => setAutoFlaggedOnly(v => !v)}
+                className={`ml-auto flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                  autoFlaggedOnly ? 'bg-amber-500 text-white shadow-sm' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                }`}
+              >
+                <WarningAmberRoundedIcon sx={{ fontSize: 13 }} />
+                Needs Review ({needsReviewCount})
+              </button>
               {activeFilterCount > 0 && (
-                <button onClick={handleClearFilters} className="ml-auto text-[11px] font-bold text-rose-500 hover:text-rose-600 hover:underline">Clear filters</button>
+                <button onClick={handleClearFilters} className="text-[11px] font-bold text-rose-500 hover:text-rose-600 hover:underline">Clear filters</button>
               )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -881,6 +950,7 @@ function AttendanceContent() {
                       {paginated.map((record, idx) => {
                         const isSpecial = record.status === 'Weekly Off' || record.status === 'Holiday'
                         const rowBg =
+                          record.autoFlagged             ? 'bg-amber-50/50' :
                           record.status === 'Weekly Off' ? 'bg-slate-50/60' :
                           record.status === 'Holiday'    ? 'bg-sky-50/40'   :
                           record.status === 'On Leave'   ? 'bg-amber-50/30' :
@@ -923,6 +993,8 @@ function AttendanceContent() {
                                   ? <span className="flex items-center gap-1.5 text-green-600 text-[11px] font-bold">
                                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />In progress
                                     </span>
+                                  : record.workHours === 'Missed checkout'
+                                    ? <span className="text-[11px] font-bold text-amber-600">Missed checkout</span>
                                   : record.workHours === '—' ? <span className="text-slate-300">—</span>
                                   : record.workHours}
                             </td>
@@ -932,6 +1004,11 @@ function AttendanceContent() {
                                 {record.status === 'Holiday' && record.holidayName && (
                                   <p className="text-[10px] text-slate-400 mt-0.5 ml-0.5">{record.holidayName}</p>
                                 )}
+                                {record.autoFlagged && (
+                                  <p className="text-[10px] text-amber-600 font-semibold mt-0.5 ml-0.5 flex items-center gap-1">
+                                    <WarningAmberRoundedIcon sx={{ fontSize: 10 }} />Needs review
+                                  </p>
+                                )}
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -940,8 +1017,12 @@ function AttendanceContent() {
                               ) : (
                                 <button
                                   onClick={() => setEditRecord(record)}
-                                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-400 flex items-center justify-center transition-all"
-                                  title="Edit attendance"
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                                    record.autoFlagged
+                                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-600'
+                                      : 'bg-slate-100 hover:bg-blue-100 hover:text-blue-600 text-slate-400'
+                                  }`}
+                                  title={record.autoFlagged ? 'Review missed checkout' : 'Edit attendance'}
                                 >
                                   <EditRoundedIcon sx={{ fontSize: 14 }} />
                                 </button>

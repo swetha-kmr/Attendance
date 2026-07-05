@@ -17,7 +17,13 @@ import Link from 'next/link'
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
 import { collection, getDocs, query, orderBy, where, onSnapshot } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { db, DEV } from '@/lib/firebase'
+
+// Same dev/prod collection-name helper used in firestore-service.ts.
+// Without this, this page was querying production collections directly
+// even when DEV=true, while firestore-service.ts calls were correctly
+// hitting dev_ collections — a silent environment mismatch.
+const c = (name: string) => DEV ? `dev_${name}` : name
 
 // ── MUI Icons ─────────────────────────────────────────────────────────────────
 import DashboardRoundedIcon          from '@mui/icons-material/DashboardRounded'
@@ -71,7 +77,7 @@ async function fetchHolidaysForYear(year: number): Promise<Holiday[]> {
   const start = Timestamp.fromDate(new Date(year, 0, 1))
   const end   = Timestamp.fromDate(new Date(year, 11, 31, 23, 59, 59))
   const q = query(
-    collection(db, 'holidays'),
+    collection(db, c('holidays')),
     where('date', '>=', start),
     where('date', '<=', end),
     orderBy('date', 'asc'),
@@ -81,7 +87,7 @@ async function fetchHolidaysForYear(year: number): Promise<Holiday[]> {
 }
 
 async function fetchBirthdays(): Promise<Birthday[]> {
-  const snap = await getDocs(query(collection(db, 'birthdays'), orderBy('date', 'asc')))
+  const snap = await getDocs(query(collection(db, c('birthdays')), orderBy('date', 'asc')))
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as Birthday))
 }
 
@@ -90,7 +96,7 @@ async function checkDailyStatusSubmitted(userId: string): Promise<boolean> {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
   const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
   const q = query(
-    collection(db, 'dailyStatus'),
+    collection(db, c('dailyStatus')),
     where('userId', '==', userId),
     where('date', '>=', Timestamp.fromDate(start)),
     where('date', '<=', Timestamp.fromDate(end)),
@@ -99,27 +105,28 @@ async function checkDailyStatusSubmitted(userId: string): Promise<boolean> {
   return !snap.empty
 }
 
-async function getPreviousMissingCheckout(uid: string): Promise<{
+// Finds EVERY previous-day attendance record that has a check-in but no
+// check-out. Used to auto-mark those days as "absent" instead of blocking
+// today's check-in. Admin can later flip an auto-flagged "absent" record
+// back to "present" from the admin panel.
+async function getAllMissingCheckouts(uid: string): Promise<{
   id: string; date: Timestamp; checkInTime: Timestamp
-} | null> {
+}[]> {
   const now           = new Date()
   const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
   const q = query(
-    collection(db, 'attendance'),
-    where('userId', '==', uid),
+    collection(db, c('attendance')),
+    where('uid', '==', uid),                          // FIXED: was 'userId' — recordAttendance() only ever writes "uid"
     where('checkOutTime', '==', null),
     where('date', '<', Timestamp.fromDate(todayMidnight)),
   )
   try {
     const snap = await getDocs(q)
-    if (snap.empty) return null
-    const docs = snap.docs
-      .map(d => ({ id: d.id, ...(d.data() as any) }))
-      .sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime())
-    return docs[0]
+    if (snap.empty) return []
+    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
   } catch (err) {
-    console.warn('getPreviousMissingCheckout query failed:', err)
-    return null
+    console.warn('getAllMissingCheckouts query failed:', err)
+    return []
   }
 }
 
@@ -154,6 +161,24 @@ const HOLIDAY_TYPE_CONFIG: Record<HolidayType, { badge: string; text: string; do
   festival:   { badge: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Festival Holiday' },
   national:   { badge: 'bg-blue-100',    text: 'text-blue-700',    dot: 'bg-blue-500',    label: 'National Holiday' },
   weekly_off: { badge: 'bg-slate-100',   text: 'text-slate-600',   dot: 'bg-slate-400',   label: 'Weekly Off'       },
+}
+
+// Fallback used when a holiday document has a `type` value that doesn't
+// match one of the four known HolidayType keys (e.g. bad/missing data
+// in Firestore). Prevents the whole dashboard from crashing.
+const DEFAULT_HOLIDAY_CONFIG = {
+  badge: 'bg-slate-100',
+  text:  'text-slate-600',
+  dot:   'bg-slate-400',
+  label: 'Holiday',
+}
+
+function getHolidayConfig(type: HolidayType | undefined | null) {
+  if (type && HOLIDAY_TYPE_CONFIG[type]) return HOLIDAY_TYPE_CONFIG[type]
+  if (type) {
+    console.warn(`Unknown holiday type "${type}" — falling back to default config. Check the "holidays" collection in Firestore for a bad/mismatched "type" field.`)
+  }
+  return DEFAULT_HOLIDAY_CONFIG
 }
 
 function getGreeting(): { text: string; icon: React.ReactNode } {
@@ -289,52 +314,6 @@ function DailyStatusBlockModal({ show, onClose }: { show: boolean; onClose: () =
             <AssignmentRoundedIcon sx={{ fontSize: 16 }} />Go Now
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Missing Checkout Block Modal ──────────────────────────────────────────────
-function MissingCheckoutModal({ show, onClose, missingRecord }: {
-  show: boolean; onClose: () => void
-  missingRecord: { date: Timestamp; checkInTime: Timestamp } | null
-}) {
-  if (!show || !missingRecord) return null
-  const missedDate   = missingRecord.date.toDate().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const checkedInAt  = missingRecord.checkInTime.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in duration-200">
-        <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center mx-auto mb-4">
-          <WarningAmberRoundedIcon sx={{ fontSize: 32, color: '#e11d48' }} />
-        </div>
-        <h2 className="text-xl font-bold text-slate-900 text-center mb-1">Previous Checkout Missing</h2>
-        <p className="text-sm text-slate-500 text-center mb-5">You cannot check in until your previous day's checkout is resolved.</p>
-        <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 mb-5 space-y-2.5">
-          <div className="flex items-center gap-3">
-            <span className="w-5 h-5 rounded-full bg-rose-200 text-rose-700 text-[10px] font-bold flex items-center justify-center shrink-0">!</span>
-            <div>
-              <p className="text-xs font-bold text-rose-700">Missed Checkout Date</p>
-              <p className="text-xs text-rose-600 mt-0.5">{missedDate}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <AccessTimeRoundedIcon sx={{ fontSize: 16, color: '#fb7185', flexShrink: 0 }} />
-            <div>
-              <p className="text-xs font-bold text-rose-700">Last Check-In Time</p>
-              <p className="text-xs text-rose-600 mt-0.5">{checkedInAt}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-5">
-          <AdminPanelSettingsRoundedIcon sx={{ fontSize: 18, color: '#64748b', flexShrink: 0, mt: '1px' }} />
-          <p className="text-xs text-slate-600 font-medium leading-relaxed">
-            Please contact your <span className="font-bold text-slate-800">administrator</span> to mark your checkout for the missed day.
-          </p>
-        </div>
-        <button onClick={onClose} className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition-colors">
-          Okay, Got It
-        </button>
       </div>
     </div>
   )
@@ -574,9 +553,7 @@ function EmployeeDashboardContent() {
   const [showDailyStatusBlock,     setShowDailyStatusBlock]     = useState(false)
   const [logoutLoading,            setLogoutLoading]            = useState(false)
   const [hasDailyStatus,           setHasDailyStatus]           = useState(false)
-  const [missingCheckout,          setMissingCheckout]          = useState<{ id: string; date: Timestamp; checkInTime: Timestamp } | null>(null)
-  const [showMissingCheckoutModal, setShowMissingCheckoutModal] = useState(false)
-  const [checkingMissed,           setCheckingMissed]           = useState(false)
+  const [autoFlaggedNotice,        setAutoFlaggedNotice]        = useState('')
 
   // Notifications state — derived from leaves, with read tracking in memory
  const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => {
@@ -626,7 +603,7 @@ function EmployeeDashboardContent() {
   // Real-time leave updates so notifications appear without refresh
   useEffect(() => {
     if (!userProfile?.uid) return
-    const q = query(collection(db, 'leaveRequests'), where('userId', '==', userProfile.uid))
+    const q = query(collection(db, c('leaveRequests')), where('uid', '==', userProfile.uid)) // FIXED: was 'userId'
     const unsub = onSnapshot(q, snap => {
       const updated = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaveRequest))
       setLeaves(updated)
@@ -634,33 +611,46 @@ function EmployeeDashboardContent() {
     return () => unsub()
   }, [userProfile?.uid])
 
+  // Instead of blocking today's check-in, silently auto-mark any earlier
+  // day(s) that were checked in but never checked out as "absent". This
+  // never stops the current user (or anyone else) from checking in today.
+  // Admin can review these auto-flagged records and flip them back to
+  // "present" if the checkout was simply missed/forgotten.
   useEffect(() => {
     if (!userProfile?.uid) return
-    const check = async () => {
-      setCheckingMissed(true)
+    const autoMarkMissedCheckouts = async () => {
       try {
-        const result = await getPreviousMissingCheckout(userProfile.uid)
-        console.log('Logged in UID:', userProfile.uid)
-console.log('Missing checkout result:', result)
+        const missed = await getAllMissingCheckouts(userProfile.uid)
+        if (missed.length === 0) return
 
-console.log(
-  result?.date?.toDate().toLocaleString('en-IN')
-)
-        setMissingCheckout(result)
+        await Promise.all(
+          missed.map(rec =>
+            updateAttendance(rec.id, {
+              status: 'absent',
+              autoFlagged: true,
+            } as any)
+          )
+        )
+
+        const dateLabels = missed
+          .map(m => m.date.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }))
+          .join(', ')
+        setAutoFlaggedNotice(
+          `You missed checkout on ${dateLabels}. ${missed.length > 1 ? 'Those days have' : 'That day has'} been auto-marked as absent — your admin can correct this if it was a mistake.`
+        )
+
+        await loadData()
       } catch (err) {
-        console.error('Missing checkout check error:', err)
-      } finally {
-        setCheckingMissed(false)
+        console.error('Auto-mark missed checkouts failed:', err)
       }
     }
-    check()
+    autoMarkMissedCheckouts()
   }, [userProfile?.uid])
 
   useEffect(() => { loadData() }, [userProfile])
 
   const handleCheckInClick = () => {
     if (hasCheckedIn || actionLoading) return
-    if (missingCheckout) { setShowMissingCheckoutModal(true); return }
     setShowCheckInConfirm(true)
   }
 
@@ -702,7 +692,6 @@ console.log(
       }
       await updateAttendance(todayRecord.id, { checkOutTime, workHours })
       setSuccessMsg('Checked out! See you tomorrow 👋')
-      setMissingCheckout(null)
       await loadData()
     } catch (err: any) {
       setError(err.message || 'Failed to check out')
@@ -763,7 +752,6 @@ console.log(
 
   const status = todayStatusLabel()
   const showDailyStatusWarning = !isHREmployee && hasCheckedIn && !hasCheckedOut && !hasDailyStatus
-  const checkInIsBlocked = !hasCheckedIn && !!missingCheckout && !checkingMissed
 
   // Build notifications from leaves
   const notifications = useMemo(() => {
@@ -833,7 +821,6 @@ console.log(
         illustration={<SadPersonIllustration />} title="Comeback Soon!" subtitle="Are you sure you want to logout?"
         confirmLabel="Yes, Logout" confirmClass="bg-red-600 hover:bg-red-700" loading={logoutLoading} />
       <DailyStatusBlockModal show={showDailyStatusBlock} onClose={() => setShowDailyStatusBlock(false)} />
-      <MissingCheckoutModal show={showMissingCheckoutModal} onClose={() => setShowMissingCheckoutModal(false)} missingRecord={missingCheckout} />
 
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -927,18 +914,13 @@ console.log(
             </div>
           )}
 
-          {/* Missing checkout warning */}
-          {checkInIsBlocked && (
-            <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl">
-              <WarningAmberRoundedIcon sx={{ fontSize: 20, color: '#e11d48', flexShrink: 0, mt: '1px' }} />
+          {/* Auto-flagged missed checkout notice (informational, non-blocking) */}
+          {autoFlaggedNotice && (
+            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+              <WarningAmberRoundedIcon sx={{ fontSize: 20, color: '#d97706', flexShrink: 0, mt: '1px' }} />
               <div>
-                <p className="text-sm font-bold text-rose-700">Check-In Blocked — Previous Checkout Missing</p>
-                <p className="text-xs text-rose-500 mt-0.5">
-                  You didn't check out on{' '}
-                  <span className="font-semibold">
-                    {missingCheckout!.date.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </span>. Please contact your administrator to resolve it.
-                </p>
+                <p className="text-sm font-bold text-amber-700">Missed Checkout Auto-Flagged</p>
+                <p className="text-xs text-amber-600 mt-0.5">{autoFlaggedNotice}</p>
               </div>
             </div>
           )}
@@ -994,15 +976,12 @@ console.log(
                 )}
               </div>
               <div className="flex gap-3 shrink-0">
-                <button onClick={handleCheckInClick} disabled={hasCheckedIn || actionLoading || checkingMissed}
+                <button onClick={handleCheckInClick} disabled={hasCheckedIn || actionLoading}
                   className={`relative flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all duration-200 ${
-                    hasCheckedIn ? 'bg-white/20 text-white/60 cursor-not-allowed'
-                      : checkInIsBlocked ? 'bg-rose-400/80 text-white cursor-pointer hover:bg-rose-400 shadow-lg'
-                        : checkingMissed ? 'bg-white/20 text-white/60 cursor-wait'
-                          : 'bg-white text-blue-700 hover:bg-blue-50 shadow-lg hover:-translate-y-0.5'
+                    hasCheckedIn ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-white text-blue-700 hover:bg-blue-50 shadow-lg hover:-translate-y-0.5'
                   }`}>
-                  {checkInIsBlocked ? <WarningAmberRoundedIcon sx={{ fontSize: 18 }} /> : <LoginRoundedIcon sx={{ fontSize: 18 }} />}
-                  {hasCheckedIn ? 'Checked In ✓' : checkingMissed ? 'Checking…' : checkInIsBlocked ? 'Blocked ⚠' : 'Check In'}
+                  <LoginRoundedIcon sx={{ fontSize: 18 }} />
+                  {hasCheckedIn ? 'Checked In ✓' : 'Check In'}
                 </button>
                 <button onClick={handleCheckOutClick} disabled={!hasCheckedIn || hasCheckedOut || actionLoading}
                   className={`relative flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all duration-200 ${
@@ -1027,33 +1006,6 @@ console.log(
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            {/* Leave Balance */}
-            {/* <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-base font-extrabold text-slate-900">Leave Balance</h2>
-                <span className="text-xs font-semibold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200">
-                  {new Date().getFullYear()}
-                </span>
-              </div>
-              <div className="space-y-4">
-                {leaveStats.map((leave, i) => (
-                  <div key={i}>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-semibold text-slate-700">{leave.type}</p>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${leave.bg} ${leave.text}`}>
-                        {leave.total - leave.used} left
-                      </span>
-                    </div>
-                    <div className="relative w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`absolute left-0 top-0 h-2 rounded-full bg-gradient-to-r ${leave.color} transition-all duration-700`}
-                        style={{ width: `${Math.min((leave.used / leave.total) * 100, 100)}%` }} />
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">{leave.used} used of {leave.total} days</p>
-                  </div>
-                ))}
-              </div>
-            </div> */}
 
             {/* Recent Attendance */}
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
@@ -1097,7 +1049,7 @@ console.log(
                     </div>
                   )
                   if (day.type === 'holiday' && day.holiday) {
-                    const cfg = HOLIDAY_TYPE_CONFIG[day.holiday.type]
+                    const cfg = getHolidayConfig(day.holiday.type)
                     return (
                       <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${cfg.badge}`}>
                         <div className="flex items-center gap-3">
@@ -1128,11 +1080,33 @@ console.log(
                     </div>
                   )
                   if (day.type === 'attendance' && day.record) {
-                    const r  = day.record
+                    const r  = day.record as any
                     const ci = r.checkInTime  ? r.checkInTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
                     const co = r.checkOutTime ? r.checkOutTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
                     const wh = r.workHours ? formatWorkHours(r.workHours) : null
-                    const stillWorking = r.checkInTime && !r.checkOutTime
+                    const isAutoFlaggedAbsent = r.autoFlagged && r.status === 'absent'
+                    const stillWorking = r.checkInTime && !r.checkOutTime && !isAutoFlaggedAbsent
+
+                    // Auto-flagged: checked in that day but never checked out,
+                    // and the system marked it absent. Admin can review & flip
+                    // this back to "present" if it was just a missed checkout.
+                    if (isAutoFlaggedAbsent) {
+                      return (
+                        <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-red-50/60 border border-red-100">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                              <WarningAmberRoundedIcon sx={{ fontSize: 18, color: '#dc2626' }} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{dateLabel}</p>
+                              <p className="text-[11px] text-red-500 mt-0.5">Checked in {ci} · missed checkout</p>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-600">Auto-Absent</span>
+                        </div>
+                      )
+                    }
+
                     return (
                       <div key={i} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                         <div className="flex items-center gap-3">

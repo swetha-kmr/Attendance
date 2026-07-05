@@ -448,12 +448,7 @@ function EmployeeLeavesContent() {
                       <option value="personal" className="text-slate-800">Personal Leave</option>
                     </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-blue-200">Duration</label>
-                    <div className="h-11 px-4 rounded-xl bg-white/10 border border-white/20 flex items-center text-sm font-bold text-white">
-                      {calculateDays() > 0 ? `${calculateDays()} day${calculateDays() > 1 ? 's' : ''}` : '— days'}
-                    </div>
-                  </div>
+                 
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-blue-200">Start Date</label>
                     <input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} required
@@ -463,6 +458,13 @@ function EmployeeLeavesContent() {
                     <label className="text-xs font-bold uppercase tracking-wider text-blue-200">End Date</label>
                     <input type="date" name="endDate" value={formData.endDate} onChange={handleInputChange} required
                       className="w-full h-11 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium focus:outline-none focus:border-white/50 focus:bg-white/20 transition-all [color-scheme:dark]" />
+                  </div>
+
+                   <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-blue-200">Duration</label>
+                    <div className="h-11 px-4 rounded-xl bg-white/10 border border-white/20 flex items-center text-sm font-bold text-white">
+                      {calculateDays() > 0 ? `${calculateDays()} day${calculateDays() > 1 ? 's' : ''}` : '— days'}
+                    </div>
                   </div>
                 </div>
 
