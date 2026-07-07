@@ -132,6 +132,55 @@ async function fetchAuditLogsForRecord(employeeUid: string, date: string): Promi
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLogEntry))
 }
 
+// ── NEW: All-employees auto-flag scan ─────────────────────────────────────────
+// Scans EVERY active employee for previous-day attendance records that have a
+// check-in but no checkout, and auto-flags them as 'absent'. This runs once
+// whenever the admin opens this page.
+//
+// WHY THIS EXISTS: the employee dashboard already has a per-user version of
+// this check (runs only when that specific employee opens their dashboard).
+// On the free/Spark Firebase plan there's no scheduled Cloud Function to run
+// this server-side every night, so if an employee never opens the app after
+// missing a checkout, their record stays stuck as "present + In progress"
+// forever. Running the same scan across all employees here — triggered by
+// the admin simply visiting the Attendance page — closes that gap without
+// needing Blaze/Cloud Functions.
+async function autoFlagAllMissedCheckouts(employees: UserProfile[]): Promise<number> {
+  const now = new Date()
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  let flaggedCount = 0
+
+  for (const emp of employees) {
+    try {
+      const q = query(
+        collection(db, c('attendance')),
+        where('uid', '==', emp.uid),
+        where('checkOutTime', '==', null),
+        where('date', '<', Timestamp.fromDate(todayMidnight)),
+      )
+      const snap = await getDocs(q)
+      if (snap.empty) continue
+
+      for (const d of snap.docs) {
+        const data = d.data() as any
+        // Skip records that are already flagged — avoids redundant writes
+        // every time the admin revisits this page.
+        if (data.status === 'absent' && data.autoFlagged) continue
+
+        await updateDoc(doc(db, c('attendance'), d.id), {
+          status: 'absent',
+          autoFlagged: true,
+        })
+        flaggedCount++
+      }
+    } catch (err) {
+      // Don't let one employee's failed query/update stop the rest of the scan.
+      console.warn(`autoFlagAllMissedCheckouts failed for ${emp.uid}:`, err)
+    }
+  }
+  return flaggedCount
+}
+
 const HOLIDAY_CFG: Record<HolidayType, { badge: string; text: string; dot: string; label: string }> = {
   public:     { badge: 'bg-rose-100',    text: 'text-rose-700',    dot: 'bg-rose-500',    label: 'Public Holiday'   },
   festival:   { badge: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Festival Holiday' },
@@ -551,6 +600,10 @@ function AttendanceContent() {
   const { userProfile, signOut } = useAuth()
   const router = useRouter()
 
+  // ── NEW: auto-flag-all-employees scan ─────────────────────────────────────
+  // Guards against running the scan more than once per page load.
+  const [autoFlagRan, setAutoFlagRan] = useState(false)
+
   // ── Subscribe to Firestore ────────────────────────────────────────────────
   useEffect(() => {
     let count = 0
@@ -560,6 +613,25 @@ function AttendanceContent() {
     const u3 = subscribeToLeaveRequests(d => { setLeaves(d); done() })
     return () => { u1(); u2(); u3() }
   }, [])
+
+  // ── NEW: Runs once when `users` is populated. Scans every active employee
+  // for missed checkouts from previous days and auto-flags them as Absent.
+  // This replaces relying solely on each employee opening their own
+  // dashboard — the admin visiting this page is enough to catch everyone.
+  useEffect(() => {
+    if (users.length === 0 || autoFlagRan) return
+    const employees = users.filter(u => u.role === 'employee' && u.status === 'active')
+    if (employees.length === 0) return
+
+    setAutoFlagRan(true) // mark immediately so re-renders don't re-trigger this
+    autoFlagAllMissedCheckouts(employees).then(count => {
+      if (count > 0) {
+        console.log(`Auto-flagged ${count} missed-checkout record(s)`)
+        // No manual state update needed — subscribeToAttendance's realtime
+        // listener will pick up the Firestore changes and refresh the UI.
+      }
+    })
+  }, [users, autoFlagRan])
 
   // ── Load holidays whenever date range changes ─────────────────────────────
   useEffect(() => {
