@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore'
 import { auth, db } from './firebase'
+import { c } from './firestore-service'
 
 export interface UserProfile {
   uid: string
@@ -34,18 +35,44 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// FIX: logLoginActivity now takes name + role as explicit parameters instead
+// of reading them off the `userProfile` React state. Reading `userProfile`
+// inside onAuthStateChanged was a stale-closure bug — the state variable
+// hadn't necessarily finished updating yet when this ran, so `role` (and
+// now `name`) could be wrong or missing. Passing them in directly guarantees
+// we log the actual profile we just fetched/created, not a stale one.
+async function logLoginActivity(
+  uid: string,
+  name: string,
+  role: 'admin' | 'employee',
+  status: 'login' | 'logout',
+) {
+  try {
+    const activityRef = doc(db, c('loginActivity'), `${uid}_${Date.now()}`)
+    await setDoc(activityRef, {
+      uid,
+      name,
+      status,
+      timestamp: Timestamp.now(),
+      role,
+    })
+  } catch (error) {
+    console.error('Error logging activity:', error)
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe =onAuthStateChanged(auth, async (firebaseUser) => {
-  console.log('AUTH STATE CHANGED:', firebaseUser?.email)
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log('AUTH STATE CHANGED:', firebaseUser?.email)
       try {
         if (firebaseUser) {
           // Fetch user profile from Firestore
-          const userDocRef = doc(db, 'users', firebaseUser.uid)
+          const userDocRef = doc(db, c('users'), firebaseUser.uid)
           const userDoc = await getDoc(userDocRef)
           setUser(firebaseUser)
 
@@ -60,8 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               { merge: true }
             )
 
-            // Log login activity
-            await logLoginActivity(firebaseUser.uid, 'login')
+            // Log login activity — pass the freshly-fetched name/role directly.
+            await logLoginActivity(firebaseUser.uid, profileData.name, profileData.role, 'login')
           } else {
             // Create default profile if doesn't exist
             const newProfile: UserProfile = {
@@ -75,6 +102,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             await setDoc(userDocRef, newProfile)
             setUserProfile(newProfile)
+
+            // FIX: first-time login previously skipped logging entirely.
+            await logLoginActivity(firebaseUser.uid, newProfile.name, newProfile.role, 'login')
           }
 
           setUser(firebaseUser)
@@ -94,8 +124,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      if (user) {
-        await logLoginActivity(user.uid, 'logout')
+      if (user && userProfile) {
+        await logLoginActivity(user.uid, userProfile.name, userProfile.role, 'logout')
       }
       await firebaseSignOut(auth)
       setUser(null)
@@ -110,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) throw new Error('No user logged in')
 
     try {
-      const userDocRef = doc(db, 'users', user.uid)
+      const userDocRef = doc(db, c('users'), user.uid)
       await setDoc(userDocRef, updates, { merge: true })
 
       // Update local state
@@ -118,20 +148,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Error updating profile:', error)
       throw error
-    }
-  }
-
-  const logLoginActivity = async (uid: string, status: 'login' | 'logout') => {
-    try {
-      const activityRef = doc(db, 'loginActivity', `${uid}_${Date.now()}`)
-      await setDoc(activityRef, {
-        uid,
-        status,
-        timestamp: Timestamp.now(),
-        role: userProfile?.role || 'employee',
-      })
-    } catch (error) {
-      console.error('Error logging activity:', error)
     }
   }
 

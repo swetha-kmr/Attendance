@@ -16,7 +16,10 @@ import {
 import { db, DEV } from './firebase'
 import { UserProfile } from './auth-context'
 
-const c = (name: string) => DEV ? `dev_${name}` : name
+// FIX: exported so other files (e.g. the admin attendance page) can build
+// dev/prod-aware collection names too, instead of hardcoding 'attendance',
+// 'holidays', etc. directly and silently ignoring the DEV flag.
+export const c = (name: string) => DEV ? `dev_${name}` : name
 
 // ── Users Service ─────────────────────────────────────────────────────────────
 

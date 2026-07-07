@@ -11,6 +11,7 @@ import {
     createAdminLeaveEntry,
   AttendanceRecord,
   LeaveRequest,
+  c,
 } from '@/lib/firestore-service'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -19,7 +20,7 @@ import { Timestamp } from 'firebase/firestore'
 // ── Firebase (holidays) ───────────────────────────────────────────────────────
 import {
   collection, getDocs, addDoc, updateDoc, doc,deleteDoc,
-  query, orderBy, where,
+  query, orderBy, where, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 
@@ -52,6 +53,7 @@ import CelebrationRoundedIcon    from '@mui/icons-material/CelebrationRounded'
 import SaveRoundedIcon           from '@mui/icons-material/SaveRounded'
 import WarningRoundedIcon        from '@mui/icons-material/WarningRounded'
 import WarningAmberRoundedIcon   from '@mui/icons-material/WarningAmberRounded'
+import HistoryRoundedIcon        from '@mui/icons-material/HistoryRounded'
 
 // ── Holiday Types ─────────────────────────────────────────────────────────────
 export type HolidayType = 'public' | 'festival' | 'national' | 'weekly_off'
@@ -73,7 +75,7 @@ function normalizeHolidayType(t: unknown): HolidayType {
 
 async function fetchHolidaysByRange(start: Date, end: Date): Promise<Holiday[]> {
   const q = query(
-    collection(db, 'holidays'),
+    collection(db, c('holidays')),
     where('date', '>=', Timestamp.fromDate(start)),
     where('date', '<=', Timestamp.fromDate(end)),
     orderBy('date', 'asc'),
@@ -83,6 +85,51 @@ async function fetchHolidaysByRange(start: Date, end: Date): Promise<Holiday[]> 
     const data = d.data()
     return { id: d.id, ...data, type: normalizeHolidayType(data.type) } as Holiday
   })
+}
+
+// ── Audit Log ──────────────────────────────────────────────────────────────────
+// Every admin edit to an attendance record writes one entry here so we always
+// know WHO changed WHAT, and WHEN. This is a separate collection —
+// 'attendanceAuditLogs' — kept append-only (we never update/delete entries).
+export interface AuditLogEntry {
+  id?: string
+  employeeUid: string
+  employeeName: string
+  date: string                 // YYYY-MM-DD of the attendance record that was edited
+  changedByUid: string
+  changedByName: string
+  changedByEmail: string
+  before: { status: string; checkIn: string; checkOut: string }
+  after:  { status: string; checkIn: string; checkOut: string }
+  timestamp: Timestamp | null  // serverTimestamp() resolves to a Timestamp once written
+}
+
+async function writeAuditLog(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): Promise<void> {
+  try {
+    await addDoc(collection(db, c('attendanceAuditLogs')), {
+      ...entry,
+      timestamp: serverTimestamp(),
+    })
+  } catch (err) {
+    // Never let a logging failure block the actual attendance save — just
+    // surface it in the console for debugging.
+    console.error('Audit log write failed:', err)
+  }
+}
+
+// Fetches the change history for one specific employee+date combo, newest first.
+// NOTE: this needs a Firestore composite index on (employeeUid, date, timestamp desc) —
+// Firestore will show a "create index" link in the console error the first time
+// this query runs; click it once and the index builds automatically.
+async function fetchAuditLogsForRecord(employeeUid: string, date: string): Promise<AuditLogEntry[]> {
+  const q = query(
+    collection(db, c('attendanceAuditLogs')),
+    where('employeeUid', '==', employeeUid),
+    where('date', '==', date),
+    orderBy('timestamp', 'desc'),
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLogEntry))
 }
 
 const HOLIDAY_CFG: Record<HolidayType, { badge: string; text: string; dot: string; label: string }> = {
@@ -359,6 +406,70 @@ function EditModal({
   )
 }
 
+// ── History Modal ─────────────────────────────────────────────────────────────
+function HistoryModal({
+  record, logs, loading, onClose,
+}: {
+  record: FlatRecord | null
+  logs: AuditLogEntry[]
+  loading: boolean
+  onClose: () => void
+}) {
+  if (!record) return null
+
+  const formatLogTime = (ts: Timestamp | null) => {
+    if (!ts) return 'Just now'
+    try { return ts.toDate().toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) } catch { return '—' }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 max-h-[80vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-lg font-extrabold text-slate-900">Change History</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{record.name} · {formatDate(record.date)}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors shrink-0">
+            <CloseRoundedIcon sx={{ fontSize: 18, color: '#64748b' }} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="text-center py-10">
+            <p className="text-sm text-slate-400 font-medium">No admin changes yet for this day.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {logs.map(log => (
+              <div key={log.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-slate-800">{log.changedByName}</p>
+                  <p className="text-[10px] text-slate-400 font-medium">{formatLogTime(log.timestamp)}</p>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-2">{log.changedByEmail}</p>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-bold text-[10px]">
+                    {log.before.status} {log.before.checkIn !== '—' ? `· ${log.before.checkIn}–${log.before.checkOut}` : ''}
+                  </span>
+                  <span className="text-slate-400">→</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]">
+                    {log.after.status} {log.after.checkIn !== '—' ? `· ${log.after.checkIn}–${log.after.checkOut}` : ''}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Status Badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ record }: { record: FlatRecord }) {
   if (record.status === 'Weekly Off') {
@@ -405,6 +516,25 @@ function AttendanceContent() {
   const [editRecord,  setEditRecord]  = useState<FlatRecord | null>(null)
   const [saveMsg,     setSaveMsg]     = useState('')
   const [saveErrMsg,  setSaveErrMsg]  = useState('')
+
+  // Audit / change history modal state
+  const [historyRecord, setHistoryRecord] = useState<FlatRecord | null>(null)
+  const [historyLogs,    setHistoryLogs]    = useState<AuditLogEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const openHistory = async (record: FlatRecord) => {
+    setHistoryRecord(record)
+    setHistoryLoading(true)
+    try {
+      const logs = await fetchAuditLogsForRecord(record.uid, record.date)
+      setHistoryLogs(logs)
+    } catch (err) {
+      console.error('Failed to fetch audit logs:', err)
+      setHistoryLogs([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   const today = getLocalDateString()
 
@@ -568,8 +698,20 @@ function AttendanceContent() {
           userProfile!.uid,
         )
         if (record.firestoreId) {
-          await deleteDoc(doc(db, 'attendance', record.firestoreId))
+          await deleteDoc(doc(db, c('attendance'), record.firestoreId))
         }
+
+        await writeAuditLog({
+          employeeUid: record.uid,
+          employeeName: record.name,
+          date: record.date,
+          changedByUid: userProfile!.uid,
+          changedByName: userProfile!.name ?? 'Admin',
+          changedByEmail: userProfile!.email ?? '',
+          before: { status: record.status, checkIn: record.checkIn, checkOut: record.checkOut },
+          after:  { status: 'On Leave',     checkIn: '—',            checkOut: '—' },
+        })
+
         setSaveMsg(`Marked ${record.name} as On Leave for ${formatDate(record.date)}`)
         setTimeout(() => setSaveMsg(''), 4000)
         return { ok: true }
@@ -594,7 +736,7 @@ function AttendanceContent() {
       const attStatus = newStatus === 'Present' ? 'present' : 'absent'
 
       if (record.firestoreId) {
-        await updateDoc(doc(db, 'attendance', record.firestoreId), {
+        await updateDoc(doc(db, c('attendance'), record.firestoreId), {
           status:       attStatus,
           checkInTime:  checkInTs,
           checkOutTime: checkOutTs,
@@ -604,7 +746,7 @@ function AttendanceContent() {
           autoFlagged:  false,
         })
       } else {
-        await addDoc(collection(db, 'attendance'), {
+        await addDoc(collection(db, c('attendance')), {
           uid:          record.uid,
           userId:       record.uid,
           date:         Timestamp.fromDate(dateObj),
@@ -616,6 +758,17 @@ function AttendanceContent() {
           autoFlagged:  false,
         })
       }
+
+      await writeAuditLog({
+        employeeUid: record.uid,
+        employeeName: record.name,
+        date: record.date,
+        changedByUid: userProfile!.uid,
+        changedByName: userProfile!.name ?? 'Admin',
+        changedByEmail: userProfile!.email ?? '',
+        before: { status: record.status, checkIn: record.checkIn,  checkOut: record.checkOut },
+        after:  { status: newStatus,     checkIn: newCheckIn || '—', checkOut: newCheckOut || '—' },
+      })
 
       setSaveMsg(`Updated ${record.name}'s attendance for ${formatDate(record.date)}`)
       setSaveErrMsg('')
@@ -679,6 +832,14 @@ function AttendanceContent() {
 
       {/* Edit Modal */}
       <EditModal record={editRecord} onClose={() => setEditRecord(null)} onSave={handleSaveEdit} />
+
+      {/* History Modal */}
+      <HistoryModal
+        record={historyRecord}
+        logs={historyLogs}
+        loading={historyLoading}
+        onClose={() => { setHistoryRecord(null); setHistoryLogs([]) }}
+      />
 
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-100 flex flex-col shadow-lg transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -955,7 +1116,7 @@ function AttendanceContent() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        {['Employee', 'Department', 'Date', 'Check In', 'Check Out', 'Work Hours', 'Status', 'Edit'].map(h => (
+                        {['Employee', 'Department', 'Date', 'Check In', 'Check Out', 'Work Hours', 'Status', 'Edit', 'History'].map(h => (
                           <th key={h} className="px-4 py-2.5 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -1039,6 +1200,19 @@ function AttendanceContent() {
                                   title={record.autoFlagged ? 'Review missed checkout' : 'Edit attendance'}
                                 >
                                   <EditRoundedIcon sx={{ fontSize: 14 }} />
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {isSpecial ? (
+                                <span className="text-[10px] text-slate-300 font-medium">—</span>
+                              ) : (
+                                <button
+                                  onClick={() => openHistory(record)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all bg-slate-100 hover:bg-violet-100 hover:text-violet-600 text-slate-400"
+                                  title="View change history"
+                                >
+                                  <HistoryRoundedIcon sx={{ fontSize: 14 }} />
                                 </button>
                               )}
                             </td>

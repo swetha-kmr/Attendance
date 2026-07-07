@@ -636,7 +636,7 @@ function EmployeeDashboardContent() {
           .map(m => m.date.toDate().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }))
           .join(', ')
         setAutoFlaggedNotice(
-          `You missed checkout on ${dateLabels}. ${missed.length > 1 ? 'Those days have' : 'That day has'} been auto-marked as absent — your admin can correct this if it was a mistake.`
+          `You missed checkout on ${dateLabels}. ${missed.length > 1 ? 'Those days have' : 'please contact your admin'} `
         )
 
         await loadData()
@@ -919,7 +919,7 @@ function EmployeeDashboardContent() {
             <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
               <WarningAmberRoundedIcon sx={{ fontSize: 20, color: '#d97706', flexShrink: 0, mt: '1px' }} />
               <div>
-                <p className="text-sm font-bold text-amber-700">Missed Checkout Auto-Flagged</p>
+                <p className="text-sm font-bold text-amber-700">Missed Checkout</p>
                 <p className="text-xs text-amber-600 mt-0.5">{autoFlaggedNotice}</p>
               </div>
             </div>
@@ -1102,7 +1102,7 @@ function EmployeeDashboardContent() {
                               <p className="text-[11px] text-red-500 mt-0.5">Checked in {ci} · missed checkout</p>
                             </div>
                           </div>
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-600">Auto-Absent</span>
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-600">Absent</span>
                         </div>
                       )
                     }
